@@ -8,9 +8,22 @@ body {
     radial-gradient(800px 500px at 25% 10%, rgba(255, 60, 60, 0.20), transparent 60%),
     radial-gradient(700px 450px at 85% 30%, rgba(255, 255, 255, 0.10), transparent 60%),
     #0b0b0d;
+
+
 }
 
+
+html, body, #root { height: 100%; }
+
+body{
+  margin: 0;
+  background: #0b0b0d; /* mesma cor do app */
+  color: #fff;
+}
+
+
 .page {
+  background: #0b0b0d;
   min-height: 100vh;
   display: flex;
   align-items: center;

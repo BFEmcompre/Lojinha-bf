@@ -403,7 +403,9 @@ export default function App() {
 
         <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 14 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <h3 style={{ marginTop: 0, marginRight: "auto" }}>📆 Meu gasto do mês</h3>
+    <h3 style={{ marginTop: 0, marginRight: "auto" }}>
+  📆 Meu gasto do mês {myEmployee?.name ? `— ${myEmployee.name}` : ""}
+</h3>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{brl(monthSum)}</div>
           </div>
 
