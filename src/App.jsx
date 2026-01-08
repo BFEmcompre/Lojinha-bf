@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
+import "./App.css";
+
 
 const PRICES = { DOCE_SALGADINHO: 2, RED_BULL: 7 };
 
@@ -211,16 +213,19 @@ export default function App() {
 
   // --- TELAS ---
 
- if (!session) {
+if (!session) {
   return (
     <div className="page">
       <div className="authCard">
-        <div className="brand">
-          <span className="brandIcon">🍫</span>
-          <h1>Lojinha BF</h1>
+        <div className="brandRow">
+          <img src="/favicon.ico" alt="BF" className="brandLogo" />
+          <div>
+            <div className="brandTitle">Lojinha BF</div>
+            <div className="brandSubtitle">Controle interno de compras</div>
+          </div>
         </div>
 
-        <p className="muted">Entre com seu e-mail para acessar.</p>
+        <div className="divider" />
 
         <form onSubmit={sendMagicLink} className="form">
           <label className="label">E-mail</label>
@@ -234,13 +239,14 @@ export default function App() {
           <button className="btnPrimary" type="submit">
             Enviar link
           </button>
-        </form>
 
-        {msg && <p className="msg">{msg}</p>}
+          {msg && <div className="msg">{msg}</div>}
+        </form>
       </div>
     </div>
   );
 }
+
 
 
   // Tela de cadastro (aparece no 1º acesso)
