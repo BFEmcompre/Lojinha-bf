@@ -1,42 +1,91 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+:root { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 20% 10%, rgba(255,255,255,0.06), transparent 60%),
+              radial-gradient(900px 500px at 90% 40%, rgba(255,0,0,0.05), transparent 60%),
+              #0f0f10;
+  color: #fff;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.authCard {
+  width: 100%;
+  max-width: 460px;
+  background: rgba(20, 20, 22, 0.72);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  backdrop-filter: blur(10px);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
-.card {
-  padding: 2em;
+.brandIcon {
+  font-size: 22px;
 }
 
-.read-the-docs {
-  color: #888;
+.brand h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.muted {
+  margin: 0 0 16px 0;
+  opacity: 0.8;
+  font-size: 14px;
+}
+
+.form { display: grid; gap: 10px; }
+
+.label {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(10,10,12,0.65);
+  color: #fff;
+  outline: none;
+}
+
+.input:focus {
+  border-color: rgba(255,255,255,0.28);
+}
+
+.btnPrimary {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: #ffffff;
+  color: #111;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btnPrimary:active {
+  transform: translateY(1px);
+}
+
+.msg {
+  margin-top: 12px;
+  font-size: 13px;
+  opacity: 0.9;
 }

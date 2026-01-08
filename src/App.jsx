@@ -211,21 +211,37 @@ export default function App() {
 
   // --- TELAS ---
 
-  if (!session) {
-    return (
-      <div style={{ fontFamily: "system-ui", padding: 24, maxWidth: 420, margin: "0 auto" }}>
-        <h2>🍫 Lojinha BF</h2>
-        <p>Entre com seu e-mail para acessar.</p>
+ if (!session) {
+  return (
+    <div className="page">
+      <div className="authCard">
+        <div className="brand">
+          <span className="brandIcon">🍫</span>
+          <h1>Lojinha BF</h1>
+        </div>
 
-        <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 10 }}>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seuemail@empresa.com" />
-          <button type="submit">Enviar link</button>
+        <p className="muted">Entre com seu e-mail para acessar.</p>
+
+        <form onSubmit={sendMagicLink} className="form">
+          <label className="label">E-mail</label>
+          <input
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="seuemail@emcompre.com.br"
+          />
+
+          <button className="btnPrimary" type="submit">
+            Enviar link
+          </button>
         </form>
 
-        {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
+        {msg && <p className="msg">{msg}</p>}
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   // Tela de cadastro (aparece no 1º acesso)
   if (needsOnboarding) {
