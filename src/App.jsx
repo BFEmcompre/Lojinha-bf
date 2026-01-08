@@ -215,7 +215,7 @@ export default function App() {
     return (
       <div style={{ fontFamily: "system-ui", padding: 24, maxWidth: 420, margin: "0 auto" }}>
         <h2>🍫 Lojinha BF</h2>
-        <p>Entre com seu e-mail para acessar.</p>
+        <p>Entre com seu e-mail para acessar aaaaa.</p>
 
         <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 10 }}>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seuemail@empresa.com" />
