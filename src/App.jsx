@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import "./App.css";
 
-
 const PRICES = { DOCE_SALGADINHO: 2, RED_BULL: 7 };
 
 function brl(n) {
@@ -58,14 +57,12 @@ export default function App() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [fullName, setFullName] = useState("");
   const [sector, setSector] = useState("");
+  const [company, setCompany] = useState(""); // FA/BF
 
   // compras (usuário)
   const [item, setItem] = useState("DOCE_SALGADINHO");
   const [qty, setQty] = useState(1);
   const [myPurchases, setMyPurchases] = useState([]);
-
-  // admin
-  const [adminPurchases, setAdminPurchases] = useState([]);
 
   const totalNow = useMemo(() => PRICES[item] * Math.max(1, Number(qty || 1)), [item, qty]);
   const monthSum = useMemo(() => myPurchases.reduce((acc, p) => acc + (p.total || 0), 0), [myPurchases]);
@@ -90,6 +87,7 @@ export default function App() {
 
   async function signOut() {
     await supabase.auth.signOut();
+    window.location.reload();
   }
 
   async function loadProfile() {
@@ -102,12 +100,11 @@ export default function App() {
     return data;
   }
 
-  async function loadMyEmployeeByUser() {
-    // procura employee pelo user_id (auto-cadastro)
+  async function loadMyEmployeeByUser(userId) {
     const { data, error } = await supabase
       .from("employees")
-      .select("id, name, sector, active")
-      .eq("user_id", session.user.id)
+      .select("id, name, sector, company, active")
+      .eq("user_id", userId)
       .maybeSingle();
 
     if (error) throw error;
@@ -116,17 +113,18 @@ export default function App() {
   }
 
   async function ensureOnboarding() {
-    // se não existe employee para esse user_id, precisa cadastrar
-    const emp = await loadMyEmployeeByUser();
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const emp = await loadMyEmployeeByUser(userId);
     if (!emp) {
       setNeedsOnboarding(true);
       return;
     }
 
-    // se existe, tenta vincular no profile.employee_id automaticamente (caso esteja vazio)
     const prof = await loadProfile();
     if (!prof.employee_id) {
-      await supabase.from("profiles").update({ employee_id: emp.id }).eq("user_id", session.user.id);
+      await supabase.from("profiles").update({ employee_id: emp.id }).eq("user_id", userId);
       const updated = await loadProfile();
       setProfile(updated);
     }
@@ -137,7 +135,7 @@ export default function App() {
     const { start, end } = monthRangeISO(new Date());
     const { data, error } = await supabase
       .from("purchases")
-      .select("id, item, unit_price, qty, total, created_at")
+      .select("id, user_id, item, unit_price, qty, total, created_at")
       .gte("created_at", start)
       .lt("created_at", end)
       .order("created_at", { ascending: false });
@@ -148,34 +146,81 @@ export default function App() {
 
   async function addPurchase() {
     setMsg("");
+
+    // pega o userId na hora (evita bug de “parecer ADM” por estado antigo)
+    const { data: s } = await supabase.auth.getSession();
+    const userId = s?.session?.user?.id;
+    if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
+
     const payload = {
-      user_id: session.user.id,
+      user_id: userId,
       item,
       unit_price: PRICES[item],
       qty: Math.max(1, Number(qty || 1)),
-      total: totalNow,
+      total: PRICES[item] * Math.max(1, Number(qty || 1)),
     };
+
     const { error } = await supabase.from("purchases").insert([payload]);
     if (error) return setMsg(error.message);
+
     setQty(1);
     await loadMyPurchasesThisMonth();
   }
 
-  // Admin: carregar compras do mês com nome/setor via join (se employee_id estiver preenchido por trigger)
-  async function adminLoadPurchasesThisMonth() {
+  // EXPORT ADMIN (seguro): junta por user_id e filtra empresa
+  async function exportCSV(companyFilter) {
+    setMsg("");
+
+    const { data: s } = await supabase.auth.getSession();
+    if (!s?.session) return alert("Sessão expirada.");
+
+    // employees (nome/setor/empresa)
+    const { data: emps, error: e1 } = await supabase
+      .from("employees")
+      .select("user_id,name,sector,company,active");
+
+    if (e1) return alert("Erro employees: " + e1.message);
+
+    const empMap = new Map(
+      (emps || [])
+        .filter((x) => x.active !== false)
+        .map((x) => [x.user_id, x])
+    );
+
+    // compras do mês
     const { start, end } = monthRangeISO(new Date());
-    const { data, error } = await supabase
+    const { data: pur, error: e2 } = await supabase
       .from("purchases")
-      .select(
-        `id, item, qty, total, created_at,
-         employees:employee_id ( name, sector )`
-      )
+      .select("created_at,user_id,item,unit_price,qty,total")
       .gte("created_at", start)
       .lt("created_at", end)
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
-    setAdminPurchases(data ?? []);
+    if (e2) return alert("Erro purchases: " + e2.message);
+
+    const rowsObj = (pur || []).map((p) => {
+      const emp = empMap.get(p.user_id);
+      return {
+        data: new Date(p.created_at).toLocaleString("pt-BR"),
+        empresa: emp?.company ?? "",
+        nome: emp?.name ?? "",
+        setor: emp?.sector ?? "",
+        item: formatItem(p.item),
+        qtd: p.qty,
+        unit_price: p.unit_price,
+        total: p.total,
+        user_id: p.user_id,
+      };
+    });
+
+    const filtered = companyFilter ? rowsObj.filter((r) => r.empresa === companyFilter) : rowsObj;
+
+    const rows = [
+      ["Data", "Empresa", "Nome", "Setor", "Item", "Qtd", "Preço Unit", "Total", "UserId"],
+      ...filtered.map((r) => [r.data, r.empresa, r.nome, r.setor, r.item, r.qtd, r.unit_price, r.total, r.user_id]),
+    ];
+
+    downloadCSV(`lojinha_${companyFilter || "GERAL"}_${new Date().toISOString().slice(0, 7)}.csv`, rows);
   }
 
   // Quando loga: carrega profile e verifica onboarding
@@ -186,8 +231,6 @@ export default function App() {
         setMsg("");
         await loadProfile();
         await ensureOnboarding();
-        // se onboarding não for necessário, carrega compras
-        // (se for necessário, vai exibir tela de cadastro)
       } catch (e) {
         setMsg(e.message ?? String(e));
       }
@@ -202,52 +245,48 @@ export default function App() {
     (async () => {
       try {
         await loadMyPurchasesThisMonth();
-        // se for admin, já carrega compras gerais também
-        if (profile?.is_admin) await adminLoadPurchasesThisMonth();
       } catch (e) {
         setMsg(e.message ?? String(e));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsOnboarding, session?.user?.id, profile?.is_admin]);
+  }, [needsOnboarding, session?.user?.id]);
 
   // --- TELAS ---
 
-if (!session) {
-  return (
-    <div className="page">
-      <div className="authCard">
-        <div className="brandRow">
-          <img src="/favicon.ico" alt="BF" className="brandLogo" />
-          <div>
-            <div className="brandTitle">Lojinha BF</div>
-            <div className="brandSubtitle">Controle interno de compras</div>
+  if (!session) {
+    return (
+      <div className="page">
+        <div className="authCard">
+          <div className="brandRow">
+            <img src="/favicon.ico" alt="BF" className="brandLogo" />
+            <div>
+              <div className="brandTitle">Lojinha BF</div>
+              <div className="brandSubtitle">Controle interno de compras</div>
+            </div>
           </div>
+
+          <div className="divider" />
+
+          <form onSubmit={sendMagicLink} className="form">
+            <label className="label">E-mail</label>
+            <input
+              className="input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="seuemail@emcompre.com.br"
+            />
+
+            <button className="btnPrimary" type="submit">
+              Enviar link
+            </button>
+
+            {msg && <div className="msg">{msg}</div>}
+          </form>
         </div>
-
-        <div className="divider" />
-
-        <form onSubmit={sendMagicLink} className="form">
-          <label className="label">E-mail</label>
-          <input
-            className="input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="seuemail@emcompre.com.br"
-          />
-
-          <button className="btnPrimary" type="submit">
-            Enviar link
-          </button>
-
-          {msg && <div className="msg">{msg}</div>}
-        </form>
       </div>
-    </div>
-  );
-}
-
-
+    );
+  }
 
   // Tela de cadastro (aparece no 1º acesso)
   if (needsOnboarding) {
@@ -259,38 +298,40 @@ if (!session) {
         </div>
 
         <p style={{ opacity: 0.85 }}>
-          Primeiro acesso. Preencha seu <b>nome</b> e <b>setor</b> para liberar o uso da lojinha.
+          Primeiro acesso. Preencha seu <b>nome</b>, <b>setor</b> e <b>empresa</b> para liberar o uso da lojinha.
         </p>
 
         <div style={{ display: "grid", gap: 10 }}>
           <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome completo" />
           <input value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Seu setor" />
 
+          <select value={company} onChange={(e) => setCompany(e.target.value)}>
+            <option value="">Selecione a empresa...</option>
+            <option value="FA">F.A</option>
+            <option value="BF">BF Colchões</option>
+          </select>
+
           <button
             onClick={async () => {
               setMsg("");
-              if (!fullName.trim() || !sector.trim()) return setMsg("Preencha nome e setor.");
+              if (!fullName.trim() || !sector.trim() || !company) return setMsg("Preencha nome, setor e empresa.");
 
-              // cria o employee do próprio usuário
+              const userId = session.user.id;
+
               const { data, error } = await supabase
                 .from("employees")
-                .insert([{ user_id: session.user.id, name: fullName.trim(), sector: sector.trim(), active: true }])
+                .insert([{ user_id: userId, name: fullName.trim(), sector: sector.trim(), company, active: true }])
                 .select("id")
                 .single();
 
               if (error) return setMsg(error.message);
 
-              // vincula no profile
-              const { error: e2 } = await supabase
-                .from("profiles")
-                .update({ employee_id: data.id })
-                .eq("user_id", session.user.id);
-
+              const { error: e2 } = await supabase.from("profiles").update({ employee_id: data.id }).eq("user_id", userId);
               if (e2) return setMsg(e2.message);
 
               setNeedsOnboarding(false);
               await loadProfile();
-              await loadMyEmployeeByUser();
+              await loadMyEmployeeByUser(userId);
             }}
           >
             Salvar cadastro
@@ -304,21 +345,16 @@ if (!session) {
 
   // Tela principal
   return (
-    <div
-  style={{
-    fontFamily: "system-ui",
-    padding: 24,
-    maxWidth: 1100,
-    margin: "0 auto",
-    minHeight: "100vh"
-  }}
->
+    <div style={{ fontFamily: "system-ui", padding: 24, maxWidth: 1100, margin: "0 auto", minHeight: "100vh" }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <h2 style={{ marginRight: "auto" }}>🍫 Lojinha BF</h2>
+
         <div style={{ fontSize: 12, opacity: 0.85 }}>
           {session.user.email}
-          {myEmployee ? ` • ${myEmployee.name} (${myEmployee.sector})` : ""}
+          {myEmployee ? ` • ${myEmployee.name} (${myEmployee.sector}${myEmployee.company ? ` / ${myEmployee.company}` : ""})` : ""}
+          {profile?.is_admin ? " • ADM" : ""}
         </div>
+
         <button onClick={signOut}>Sair</button>
       </div>
 
@@ -372,7 +408,7 @@ if (!session) {
               <tbody>
                 {myPurchases.map((p) => (
                   <tr key={p.id} style={{ borderTop: "1px solid #eee" }}>
-                    <td>{new Date(p.created_at).toLocaleString()}</td>
+                    <td>{new Date(p.created_at).toLocaleString("pt-BR")}</td>
                     <td>{formatItem(p.item)}</td>
                     <td>{p.qty}</td>
                     <td>{brl(p.total)}</td>
@@ -395,29 +431,13 @@ if (!session) {
             <h3 style={{ marginTop: 0 }}>🛠 Admin</h3>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={async () => {
-                  await adminLoadPurchasesThisMonth();
-                  const rows = [
-                    ["data", "nome", "setor", "item", "qtd", "total"],
-                    ...(adminPurchases ?? []).map((p) => [
-                      new Date(p.created_at).toLocaleString(),
-                      p.employees?.name ?? "",
-                      p.employees?.sector ?? "",
-                      formatItem(p.item),
-                      p.qty,
-                      p.total,
-                    ]),
-                  ];
-                  downloadCSV(`lojinha_compras_${new Date().toISOString().slice(0, 7)}.csv`, rows);
-                }}
-              >
-                Exportar CSV do mês
-              </button>
+              <button onClick={() => exportCSV("FA")}>Exportar CSV F.A (mês)</button>
+              <button onClick={() => exportCSV("BF")}>Exportar CSV BF (mês)</button>
+              <button onClick={() => exportCSV("")}>Exportar CSV Geral (mês)</button>
             </div>
 
             <p style={{ opacity: 0.75, marginTop: 10 }}>
-              Obs: Para aparecer nome/setor no export, o vínculo precisa existir (auto-cadastro faz isso).
+              Export traz: data, empresa, nome, setor, item, qtd, preço unit, total e user_id (auditoria).
             </p>
           </div>
         )}
