@@ -282,7 +282,15 @@ export default function App() {
 
   // Tela principal
   return (
-    <div style={{ fontFamily: "system-ui", padding: 24, maxWidth: 980, margin: "0 auto" }}>
+    <div
+  style={{
+    fontFamily: "system-ui",
+    padding: 24,
+    maxWidth: 1100,
+    margin: "0 auto",
+    minHeight: "100vh"
+  }}
+>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <h2 style={{ marginRight: "auto" }}>🍫 Lojinha BF</h2>
         <div style={{ fontSize: 12, opacity: 0.85 }}>
