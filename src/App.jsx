@@ -289,29 +289,38 @@ export default function App() {
   }
 
   // Tela de cadastro (aparece no 1º acesso)
-  if (needsOnboarding) {
-    return (
-      <div style={{ fontFamily: "system-ui", padding: 24, maxWidth: 520, margin: "0 auto" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <h2 style={{ marginRight: "auto" }}>📝 Complete seu cadastro</h2>
-          <button onClick={signOut}>Sair</button>
+ if (needsOnboarding) {
+  return (
+    <div className="page">
+      <div className="authCard">
+        <div className="topRow">
+          <div>
+            <div className="brandTitle">Complete seu cadastro</div>
+            <div className="brandSubtitle">
+              Primeiro acesso. Preencha nome, setor e empresa para liberar o uso da lojinha.
+            </div>
+          </div>
+          <button className="btnGhost" onClick={signOut}>Sair</button>
         </div>
 
-        <p style={{ opacity: 0.85 }}>
-          Primeiro acesso. Preencha seu <b>nome</b>, <b>setor</b> e <b>empresa</b> para liberar o uso da lojinha.
-        </p>
+        <div className="divider" />
 
-        <div style={{ display: "grid", gap: 10 }}>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome completo" />
-          <input value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Seu setor" />
+        <div className="form">
+          <label className="label">Nome completo</label>
+          <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome completo" />
 
-          <select value={company} onChange={(e) => setCompany(e.target.value)}>
-            <option value="">Selecione a empresa...</option>
+          <label className="label">Setor</label>
+          <input className="input" value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Seu setor" />
+
+          <label className="label">Empresa</label>
+          <select className="input" value={company} onChange={(e) => setCompany(e.target.value)}>
+            <option value="">Selecione...</option>
             <option value="FA">F.A</option>
             <option value="BF">BF Colchões</option>
           </select>
 
           <button
+            className="btnPrimary"
             onClick={async () => {
               setMsg("");
               if (!fullName.trim() || !sector.trim() || !company) return setMsg("Preencha nome, setor e empresa.");
@@ -337,11 +346,13 @@ export default function App() {
             Salvar cadastro
           </button>
 
-          {msg && <p>{msg}</p>}
+          {msg && <div className="msg">{msg}</div>}
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   // Tela principal
   return (
@@ -364,7 +375,8 @@ export default function App() {
         <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 14 }}>
           <h3 style={{ marginTop: 0 }}>🧾 Lançar compra</h3>
 
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr 1fr" }}>
+         <div className="purchaseGrid">
+
             <label style={{ display: "grid", gap: 6 }}>
               <span>Item</span>
               <select value={item} onChange={(e) => setItem(e.target.value)}>

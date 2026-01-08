@@ -2,90 +2,202 @@
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 20% 10%, rgba(255,255,255,0.06), transparent 60%),
-              radial-gradient(900px 500px at 90% 40%, rgba(255,0,0,0.05), transparent 60%),
-              #0f0f10;
-  color: #fff;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color: #fff;
+  background:
+    radial-gradient(800px 500px at 25% 10%, rgba(255, 60, 60, 0.20), transparent 60%),
+    radial-gradient(700px 450px at 85% 30%, rgba(255, 255, 255, 0.10), transparent 60%),
+    #0b0b0d;
 }
 
 .page {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
 }
 
 .authCard {
   width: 100%;
   max-width: 460px;
-  background: rgba(20, 20, 22, 0.72);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(16, 16, 18, 0.75);
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 18px;
   padding: 22px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.55);
   backdrop-filter: blur(10px);
 }
 
-.brand {
+.brandRow {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: 12px;
 }
 
-.brandIcon {
+.brandLogo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  padding: 8px;
+}
+
+.brandTitle {
   font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
 }
 
-.brand h1 {
-  font-size: 20px;
-  margin: 0;
+.brandSubtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.75;
 }
 
-.muted {
-  margin: 0 0 16px 0;
-  opacity: 0.8;
-  font-size: 14px;
+.divider {
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+  margin: 16px 0;
 }
 
-.form { display: grid; gap: 10px; }
+.form {
+  display: grid;
+  gap: 10px;
+}
 
 .label {
   font-size: 12px;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 
 .input {
   width: 100%;
-  padding: 12px 12px;
+  padding: 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(10,10,12,0.65);
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(10,10,12,0.70);
   color: #fff;
   outline: none;
 }
 
 .input:focus {
-  border-color: rgba(255,255,255,0.28);
+  border-color: rgba(255,255,255,0.30);
 }
 
 .btnPrimary {
+  margin-top: 6px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.16);
+  border: none;
+  cursor: pointer;
+  font-weight: 800;
+  color: #111;
+  background: linear-gradient(90deg, #ffffff, #eaeaea);
+}
+
+.btnPrimary:active { transform: translateY(1px); }
+
+.msg {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* Base */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: #0b0b0d; color: #fff; }
+
+/* Centralizador (serve pro login e cadastro) */
+.page{
+  min-height: 100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 16px;
+}
+
+.authCard{
+  width: 100%;
+  max-width: 520px;
+  background: rgba(20,20,22,.92);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.topRow{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 12px;
+}
+
+.form{ display:grid; gap: 10px; }
+
+.label{ font-size: 13px; opacity: .85; }
+
+.input{
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.25);
+  color: #fff;
+  outline: none;
+}
+
+.btnPrimary{
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 0;
   background: #ffffff;
   color: #111;
   font-weight: 700;
   cursor: pointer;
 }
 
-.btnPrimary:active {
-  transform: translateY(1px);
+.btnGhost{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
 }
 
-.msg {
-  margin-top: 12px;
-  font-size: 13px;
-  opacity: 0.9;
+.divider{
+  height: 1px;
+  background: rgba(255,255,255,.12);
+  margin: 14px 0;
 }
+
+.msg{
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  font-size: 13px;
+}
+
+/* ===== Mobile fix geral: evita "zoom" e quebra grid ===== */
+@media (max-width: 640px){
+  .authCard{ padding: 14px; border-radius: 16px; }
+  .brandTitle{ font-size: 18px; }
+}
+
+.purchaseGrid{
+  display:grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 640px){
+  .purchaseGrid{
+    grid-template-columns: 1fr; /* vira uma coluna no celular */
+  }
+}
+
+
