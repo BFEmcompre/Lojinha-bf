@@ -228,10 +228,53 @@ const payload = {
 
     const filtered = companyFilter ? rowsObj.filter((r) => r.empresa === companyFilter) : rowsObj;
 
-    const rows = [
-      ["Data", "Empresa", "Nome", "Setor", "Item", "Qtd", "Preço Unit", "Total", "UserId"],
-      ...filtered.map((r) => [r.data, r.empresa, r.nome, r.setor, r.item, r.qtd, r.unit_price, r.total, r.user_id]),
-    ];
+
+// --- RESUMO POR USUÁRIO (soma do mês) ---
+const summaryMap = new Map();
+
+for (const r of filtered) {
+  const key = `${r.user_id}__${r.nome}__${r.setor}__${r.empresa}`;
+  const prev = summaryMap.get(key) || 0;
+  summaryMap.set(key, prev + Number(r.total || 0));
+}
+
+const summaryRows = Array.from(summaryMap.entries()).map(([key, sum]) => {
+  const [user_id, nome, setor, empresa] = key.split("__");
+  return { empresa, nome, setor, total_mes: sum, user_id };
+});
+
+// ordena do maior pro menor (opcional)
+summaryRows.sort((a, b) => b.total_mes - a.total_mes);
+
+
+const rows = [
+  ["DETALHADO"],
+  ["Data", "Empresa", "Nome", "Setor", "Item", "Qtd", "Preço Unit", "Total", "UserId"],
+  ...filtered.map((r) => [
+    r.data,
+    r.empresa,
+    r.nome,
+    r.setor,
+    r.item,
+    r.qtd,
+    r.unit_price,
+    r.total,
+    r.user_id
+  ]),
+
+  [], // linha em branco
+
+  ["RESUMO POR USUÁRIO (TOTAL DO MÊS)"],
+  ["Empresa", "Nome", "Setor", "Total do mês", "UserId"],
+  ...summaryRows.map((s) => [
+    s.empresa,
+    s.nome,
+    s.setor,
+    Number(s.total_mes || 0).toFixed(2).replace(".", ","), // formato BR
+    s.user_id
+  ]),
+];
+
 
     downloadCSV(`lojinha_${companyFilter || "GERAL"}_${new Date().toISOString().slice(0, 7)}.csv`, rows);
   }
