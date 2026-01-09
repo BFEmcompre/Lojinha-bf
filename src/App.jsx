@@ -100,6 +100,7 @@ function Kiosk() {
       
       // fallback: voz do navegador (opcional)
 
+    });
 
 ch.subscribe((status) => {
   console.log("Kiosk channel status:", status);
