@@ -2,15 +2,28 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import "./App.css";
 
-const PRICES = { DOCE_SALGADINHO: 2, RED_BULL: 7 };
+const PRICES = {
+  DOCE_SALGADINHO: 2,
+  RED_BULL: 7,
+  CAPSULA_CAFE: 1.5
+};
+
 
 function brl(n) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(n || 0));
 }
 
 function formatItem(item) {
-  return item === "RED_BULL" ? "Red Bull" : "Doce/Salgadinho";
+  switch (item) {
+    case "RED_BULL":
+      return "Red Bull";
+    case "CAPSULA_CAFE":
+      return "Cápsula de Café";
+    default:
+      return "Doce/Salgadinho";
+  }
 }
+
 
 function monthRangeISO(d = new Date()) {
   const start = new Date(d.getFullYear(), d.getMonth(), 1);
@@ -378,11 +391,17 @@ export default function App() {
          <div className="purchaseGrid">
 
             <label style={{ display: "grid", gap: 6 }}>
-              <span>Item</span>
               <select value={item} onChange={(e) => setItem(e.target.value)}>
-                <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$2)</option>
-                <option value="RED_BULL">Red Bull (R$7)</option>
-              </select>
+  <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
+  <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
+  <option value="RED_BULL">Red Bull (R$ 7,00)</option>
+</select>
+
+                <option <select value={item} onChange={(e) => setItem(e.target.value)}>
+  <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
+  <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
+  <option value="RED_BULL">Red Bull (R$ 7,00)</option>
+</select>
             </label>
 
             <label style={{ display: "grid", gap: 6 }}>
