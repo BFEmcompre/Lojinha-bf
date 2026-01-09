@@ -2,6 +2,26 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import "./App.css";
 
+let audioCh = null;
+
+async function getAudioChannel() {
+  if (audioCh) return audioCh;
+
+  audioCh = supabase.channel("lojinha-audio", {
+    config: { broadcast: { self: false } },
+  });
+
+  // garante que o canal está "SUBSCRIBED"
+  await new Promise((resolve) => {
+    audioCh.subscribe((status) => {
+      if (status === "SUBSCRIBED") resolve();
+    });
+  });
+
+  return audioCh;
+}
+
+
 const PRICES = {
   DOCE_SALGADINHO: 2,
   RED_BULL: 7,
@@ -56,7 +76,88 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+
+function Kiosk() {
+  const [enabled, setEnabled] = useState(false);
+  const [lastMsg, setLastMsg] = useState("");
+
+  useEffect(() => {
+    const ch = supabase.channel("lojinha-audio", {
+      config: { broadcast: { self: false } },
+    });
+
+    ch.on("broadcast", { event: "purchase_registered" }, ({ payload }) => {
+      setLastMsg(
+        `${payload?.name || "Alguém"} registrou: ${payload?.item || ""} (${payload?.company || ""})`
+      );
+
+      // toca som (só funciona após 1 interação)
+      try {
+        const audio = new Audio("/confirm.mp3");
+        audio.volume = 1.0;
+        audio.play().catch(() => {});
+      } catch (e) {}
+      
+      // fallback: voz do navegador (opcional)
+      try {
+        const u = new SpeechSynthesisUtterance("Compra registrada");
+        u.lang = "pt-BR";
+        u.volume = 1;
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+    });
+
+ch.subscribe((status) => {
+  console.log("Kiosk channel status:", status);
+});
+
+
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, []);
+
+  function enableAudio() {
+    // desbloqueia autoplay com uma interação
+    setEnabled(true);
+    const audio = new Audio("/confirm.mp3");
+    audio.volume = 0.01;
+    audio.play().then(() => audio.pause()).catch(() => {});
+  }
+
+  return (
+    <div className="page">
+      <div className="authCard" style={{ textAlign: "center" }}>
+        <div className="brandTitle">🔊 Modo Balcão</div>
+        <div className="brandSubtitle">Este aparelho avisa quando alguém registra uma compra</div>
+
+        <div className="divider" />
+
+        {!enabled ? (
+          <button className="btnPrimary" onClick={enableAudio}>
+            Ativar som
+          </button>
+        ) : (
+          <div style={{ fontSize: 14, opacity: 0.9 }}>
+            ✅ Som ativado. Deixe esta tela aberta.
+          </div>
+        )}
+
+        <div style={{ marginTop: 16, fontSize: 13, opacity: 0.8 }}>
+          Último aviso: {lastMsg || "—"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function App() {
+
+
+const isKiosk = new URLSearchParams(window.location.search).get("kiosk") === "1";
+if (isKiosk) return <Kiosk />;
+
   // auth
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
@@ -157,28 +258,62 @@ export default function App() {
     setMyPurchases(data ?? []);
   }
 
-  async function addPurchase() {
-    setMsg("");
+ async function addPurchase() {
+  setMsg("");
 
-    // pega o userId na hora (evita bug de “parecer ADM” por estado antigo)
-    const { data: s } = await supabase.auth.getSession();
-    const userId = s?.session?.user?.id;
-    if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
+  // pega sessão na hora (evita bug de estado antigo)
+  const { data: s } = await supabase.auth.getSession();
+  const userId = s?.session?.user?.id;
+  if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
 
-const payload = {
-  user_id: session.user.id,
-  item,
-  unit_price: Number(PRICES[item]),
-  qty: Math.max(1, Number(qty || 1)),
-  total: Number(totalNow),
-};
+  const payload = {
+    user_id: userId,
+    item,
+    unit_price: Number(PRICES[item]),
+    qty: Math.max(1, Number(qty || 1)),
+    total: Number(totalNow),
+  };
 
-    const { error } = await supabase.from("purchases").insert([payload]);
-    if (error) return setMsg(error.message);
+  const { error } = await supabase.from("purchases").insert([payload]);
+  if (error) return setMsg(error.message);
 
-    setQty(1);
-    await loadMyPurchasesThisMonth();
-  }
+  // ✅ 1) Toca som no próprio celular de quem registrou (opcional)
+  try {
+    const audio = new Audio("/confirm.mp3");
+    audio.volume = 1;
+    audio.play().catch(() => {});
+  } catch {}
+
+  // ✅ 2) Dispara aviso pro CELULAR DO BALCÃO (Realtime Broadcast)
+  // (o balcão precisa estar na tela ?kiosk=1 e já ter clicado "Ativar som")
+  try {
+    const { data: emp } = await supabase
+      .from("employees")
+      .select("name, sector, company")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+   const ch = await getAudioChannel();
+
+await ch.send({
+  type: "broadcast",
+  event: "purchase_registered",
+  payload: {
+    name: emp?.name || s.session.user.email,
+    sector: emp?.sector || "",
+    company: emp?.company || "",
+    item: formatItem(item),
+    qty: Math.max(1, Number(qty || 1)),
+    total: Number(totalNow),
+  },
+});
+
+  } catch {}
+
+  setQty(1);
+  await loadMyPurchasesThisMonth();
+}
+
 
   // EXPORT ADMIN (seguro): junta por user_id e filtra empresa
   async function exportCSV(companyFilter) {
