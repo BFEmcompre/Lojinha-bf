@@ -389,20 +389,14 @@ export default function App() {
           <h3 style={{ marginTop: 0 }}>🧾 Lançar compra</h3>
 
          <div className="purchaseGrid">
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <select value={item} onChange={(e) => setItem(e.target.value)}>
-  <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
-  <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
-  <option value="RED_BULL">Red Bull (R$ 7,00)</option>
-</select>
-
-                <option <select value={item} onChange={(e) => setItem(e.target.value)}>
-  <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
-  <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
-  <option value="RED_BULL">Red Bull (R$ 7,00)</option>
-</select>
-            </label>
+<label style={{ display: "grid", gap: 6 }}>
+  <span>Item</span>
+  <select value={item} onChange={(e) => setItem(e.target.value)}>
+    <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
+    <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
+    <option value="RED_BULL">Red Bull (R$ 7,00)</option>
+  </select>
+</label>
 
             <label style={{ display: "grid", gap: 6 }}>
               <span>Qtd</span>
