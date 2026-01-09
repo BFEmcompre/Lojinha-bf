@@ -165,13 +165,13 @@ export default function App() {
     const userId = s?.session?.user?.id;
     if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
 
-    const payload = {
-      user_id: userId,
-      item,
-      unit_price: PRICES[item],
-      qty: Math.max(1, Number(qty || 1)),
-      total: PRICES[item] * Math.max(1, Number(qty || 1)),
-    };
+const payload = {
+  user_id: session.user.id,
+  item,
+  unit_price: Number(PRICES[item]),
+  qty: Math.max(1, Number(qty || 1)),
+  total: Number(totalNow),
+};
 
     const { error } = await supabase.from("purchases").insert([payload]);
     if (error) return setMsg(error.message);
