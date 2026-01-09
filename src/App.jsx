@@ -99,13 +99,7 @@ function Kiosk() {
       } catch (e) {}
       
       // fallback: voz do navegador (opcional)
-      try {
-        const u = new SpeechSynthesisUtterance("Compra registrada");
-        u.lang = "pt-BR";
-        u.volume = 1;
-        window.speechSynthesis.speak(u);
-      } catch (e) {}
-    });
+
 
 ch.subscribe((status) => {
   console.log("Kiosk channel status:", status);
