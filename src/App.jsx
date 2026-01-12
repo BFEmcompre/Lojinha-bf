@@ -547,13 +547,14 @@ return (
       <div className="topbar">
         <h2 style={{ marginRight: "auto" }}>🍫 Lojinha BF</h2>
 
-        <div style={{ fontSize: 12, opacity: 0.85 }}>
-          {session.user.email}
-          {myEmployee
-            ? ` • ${myEmployee.name} (${myEmployee.sector}${myEmployee.company ? ` / ${myEmployee.company}` : ""})`
-            : ""}
-          {profile?.is_admin ? " • ADM" : ""}
-        </div>
+<div className="badge">
+  {session.user.email}
+  {myEmployee
+    ? ` • ${myEmployee.name} (${myEmployee.sector}${myEmployee.company ? ` / ${myEmployee.company}` : ""})`
+    : ""}
+  {profile?.is_admin ? " • ADM" : ""}
+</div>
+
 
         <button className="btnGhost" onClick={signOut}>
           Sair
