@@ -540,43 +540,42 @@ const rows = [
 }
 
 
-  // Tela principal
+// Tela principal
 return (
   <div className="shell">
     <div className="container">
-
-	<div className="topbar">
-
+      <div className="topbar">
         <h2 style={{ marginRight: "auto" }}>🍫 Lojinha BF</h2>
 
         <div style={{ fontSize: 12, opacity: 0.85 }}>
           {session.user.email}
-          {myEmployee ? ` • ${myEmployee.name} (${myEmployee.sector}${myEmployee.company ? ` / ${myEmployee.company}` : ""})` : ""}
+          {myEmployee
+            ? ` • ${myEmployee.name} (${myEmployee.sector}${myEmployee.company ? ` / ${myEmployee.company}` : ""})`
+            : ""}
           {profile?.is_admin ? " • ADM" : ""}
         </div>
 
-        <button className="btnGhost" onClick={signOut}>Sair</button>
-
+        <button className="btnGhost" onClick={signOut}>
+          Sair
+        </button>
       </div>
 
       {msg && <p>{msg}</p>}
 
-	<div className="grid">
-
-  	 <div className="card">
-
+      <div className="grid">
+        {/* Card: Lançar compra */}
+        <div className="card">
           <h3 className="cardTitle">🧾 Lançar compra</h3>
 
-
-         <div className="purchaseGrid">
-<label style={{ display: "grid", gap: 6 }}>
-  <span>Item</span>
-  <select value={item} onChange={(e) => setItem(e.target.value)}>
-    <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
-    <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
-    <option value="RED_BULL">Red Bull (R$ 7,00)</option>
-  </select>
-</label>
+          <div className="purchaseGrid">
+            <label style={{ display: "grid", gap: 6 }}>
+              <span>Item</span>
+              <select value={item} onChange={(e) => setItem(e.target.value)}>
+                <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
+                <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
+                <option value="RED_BULL">Red Bull (R$ 7,00)</option>
+              </select>
+            </label>
 
             <label style={{ display: "grid", gap: 6 }}>
               <span>Qtd</span>
@@ -594,49 +593,50 @@ return (
           </button>
         </div>
 
-<div className="card">
-  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-    <h3 className="cardTitle" style={{ marginRight: "auto" }}>
-      📆 Meu gasto do mês {myEmployee?.name ? `— ${myEmployee.name}` : ""}
-    </h3>
-    <div className="monoTotal">{brl(monthSum)}</div>
-  </div>
+        {/* Card: Meu gasto do mês */}
+        <div className="card">
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <h3 className="cardTitle" style={{ marginRight: "auto" }}>
+              📆 Meu gasto do mês {myEmployee?.name ? `— ${myEmployee.name}` : ""}
+            </h3>
+            <div className="monoTotal">{brl(monthSum)}</div>
+          </div>
 
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Item</th>
+                  <th>Qtd</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myPurchases.map((p) => (
+                  <tr key={p.id}>
+                    <td>{new Date(p.created_at).toLocaleString("pt-BR")}</td>
+                    <td>{formatItem(p.item)}</td>
+                    <td>{p.qty}</td>
+                    <td>{brl(p.total)}</td>
+                  </tr>
+                ))}
+                {myPurchases.length === 0 && (
+                  <tr>
+                    <td colSpan="4" style={{ opacity: 0.7 }}>
+                      Sem compras neste mês.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-<div className="tableWrap">
-  <table>
-    <thead>
-      <tr>
-        <th>Data</th>
-        <th>Item</th>
-        <th>Qtd</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {myPurchases.map((p) => (
-        <tr key={p.id}>
-          <td>{new Date(p.created_at).toLocaleString("pt-BR")}</td>
-          <td>{formatItem(p.item)}</td>
-          <td>{p.qty}</td>
-          <td>{brl(p.total)}</td>
-        </tr>
-      ))}
-      {myPurchases.length === 0 && (
-        <tr>
-          <td colSpan="4" style={{ opacity: 0.7 }}>
-            Sem compras neste mês.
-          </td>
-        </tr>
-      )}
-    </tbody>
-  </table>
-</div>
-
+        {/* Card: Admin (somente ADM) */}
         {profile?.is_admin && (
-         <div className="card">
-
-            <h3 style={{ marginTop: 0 }}>🛠 Admin</h3>
+          <div className="card">
+            <h3 className="cardTitle">🛠 Admin</h3>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button onClick={() => exportCSV("FA")}>Exportar CSV F.A (mês)</button>
@@ -651,5 +651,6 @@ return (
         )}
       </div>
     </div>
-  );
+  </div>
+);
 }
