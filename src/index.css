@@ -1,87 +1,339 @@
-* {
-  box-sizing: border-box;
+/* App.css */
+
+/* Base */
+:root{
+  color-scheme: dark;
+
+  --bg: #0b0b0d;
+  --surface: rgba(20,20,22,.92);
+  --surface-2: rgba(16,16,18,.75);
+
+  --border: rgba(255,255,255,.12);
+  --border-2: rgba(255,255,255,.18);
+
+  --text: rgba(255,255,255,.92);
+  --muted: rgba(255,255,255,.70);
+
+  --shadow: 0 30px 80px rgba(0,0,0,0.55);
+  --radius: 18px;
+
+  --pad: 18px;
+  --gap: 14px;
 }
 
-body {
-  overflow-x: hidden;
-}
+*{ box-sizing: border-box; }
 
-
-
-html, body, #root {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-  background: #0f0f10; /* mesmo fundo do app */
-}
-
-
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
+html, body, #root{ height: 100%; }
 
 body{
   margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  overflow-x: hidden;
-  display: block; /* <- importante */
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color: var(--text);
+  background:
+    radial-gradient(800px 500px at 25% 10%, rgba(255, 60, 60, 0.20), transparent 60%),
+    radial-gradient(700px 450px at 85% 30%, rgba(255, 255, 255, 0.10), transparent 60%),
+    var(--bg);
 }
 
-h1 {
-  font-size: 3.2em;
+/* Centralizador (login/cadastro/kiosk) */
+.page{
+  min-height: 100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 16px;
+}
+
+/* Card de auth / kiosk */
+.authCard{
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+}
+
+.brandRow{
+  display:flex;
+  align-items:center;
+  gap: 12px;
+}
+
+.brandLogo{
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  padding: 8px;
+}
+
+.brandTitle{
+  font-size: 22px;
+  font-weight: 800;
   line-height: 1.1;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+.brandSubtitle{
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+.divider{
+  height: 1px;
+  background: var(--border);
+  margin: 14px 0;
+}
+
+/* Form */
+.form{
+  display:grid;
+  gap: 10px;
+}
+
+.label{
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.input,
+select,
+input[type="number"]{
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.25);
+  color: var(--text);
+  outline: none;
+}
+
+.input:focus,
+select:focus,
+input[type="number"]:focus{
+  border-color: rgba(255,255,255,.30);
+}
+
+/* Botões */
+.btnPrimary{
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 0;
+  cursor: pointer;
+  font-weight: 800;
+  color: #111;
+  background: linear-gradient(90deg, #ffffff, #eaeaea);
+}
+.btnPrimary:active{ transform: translateY(1px); }
+
+.btnGhost{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.msg{
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+
+/* ===== Tela principal (app) ===== */
+.shell{
+  min-height: 100vh;
+  padding: 22px 16px;
+}
+
+.container{
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.topbar{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(16,16,18,.55);
+  backdrop-filter: blur(10px);
+}
+
+.topbar h2{
+  margin: 0;
+  margin-right: auto;
+  font-size: 18px;
+  letter-spacing: .2px;
+}
+
+.badge{
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.grid{
+  display:grid;
+  gap: var(--gap);
+  margin-top: var(--gap);
+}
+
+.card{
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(16,16,18,.55);
+  backdrop-filter: blur(10px);
+}
+
+.cardTitle{
+  margin: 0 0 10px 0;
+  font-size: 16px;
+}
+
+.purchaseGrid{
+  display:grid;
+  gap: 10px;
+  grid-template-columns: 1fr 140px 180px;
+}
+
+.tableWrap{
+  overflow-x:auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+table{
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+thead th{
+  text-align:left;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody td{
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+.monoTotal{
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* ===== Mobile APP mode (somente mobile) ===== */
+@media (max-width: 640px){
+
+  /* Login/cadastro mais compacto */
+  .authCard{
+    padding: 14px;
+    border-radius: 16px;
   }
-  a:hover {
-    color: #747bff;
+  .brandTitle{ font-size: 18px; }
+
+  /* App shell mais "app" (menos espaço) */
+  .shell{ padding: 10px; }
+  .grid{ gap: 10px; margin-top: 10px; }
+
+  .card{
+    padding: 10px;
+    border-radius: 14px;
   }
-  button {
-    background-color: #f9f9f9;
+
+  .cardTitle{
+    font-size: 14px;
+    margin: 0 0 8px 0;
+  }
+
+  /* Topbar vira coluna */
+  .topbar{
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .topbar h2{
+    width: 100%;
+    margin-right: 0 !important;
+    font-size: 16px;
+  }
+
+  /* badge quebra linha e não estoura */
+  .badge{
+    width: 100%;
+    word-break: break-word;
+    line-height: 1.3;
+  }
+
+  /* botão sair full */
+  .topbar .btnGhost{
+    width: 100%;
+  }
+
+  /* Inputs/Select compactos */
+  .input,
+  select,
+  input[type="number"]{
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  /* Botões compactos e full */
+  .card button,
+  .btnPrimary,
+  .btnGhost{
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  /* Lançar compra: 2 colunas (Qtd + Total) */
+  .purchaseGrid{
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  /* Item ocupa linha inteira */
+  .purchaseGrid label:first-child{
+    grid-column: 1 / -1;
+  }
+
+  .purchaseGrid label span{
+    font-size: 12px;
+    opacity: .85;
+  }
+
+  /* Tabela mais "sem zoom" */
+  table{
+    min-width: 360px; /* reduz bastante a necessidade de zoom */
+  }
+
+  thead th,
+  tbody td{
+    padding: 8px;
+    font-size: 13px;
+  }
+
+  .monoTotal{
+    font-size: 18px;
   }
 }

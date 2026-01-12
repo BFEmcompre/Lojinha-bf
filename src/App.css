@@ -1,4 +1,4 @@
-/* App.css (substituir o arquivo inteiro) */
+/* App.css */
 
 /* Base */
 :root{
@@ -206,11 +206,6 @@ input[type="number"]:focus{
   gap: 10px;
   grid-template-columns: 1fr 140px 180px;
 }
-@media (max-width: 640px){
-  .authCard{ padding: 14px; border-radius: 16px; }
-  .brandTitle{ font-size: 18px; }
-  .purchaseGrid{ grid-template-columns: 1fr; }
-}
 
 .tableWrap{
   overflow-x:auto;
@@ -242,66 +237,103 @@ tbody td{
   font-weight: 800;
 }
 
-/* ===== Mobile polish (coloque no FINAL do App.css) ===== */
+/* ===== Mobile APP mode (somente mobile) ===== */
 @media (max-width: 640px){
 
-  /* dá mais respiro no app inteiro */
-  .shell{ padding: 14px 12px; }
-  .container{ width: 100%; }
+  /* Login/cadastro mais compacto */
+  .authCard{
+    padding: 14px;
+    border-radius: 16px;
+  }
+  .brandTitle{ font-size: 18px; }
 
-  /* Topbar vira coluna e alinha à esquerda */
+  /* App shell mais "app" (menos espaço) */
+  .shell{ padding: 10px; }
+  .grid{ gap: 10px; margin-top: 10px; }
+
+  .card{
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .cardTitle{
+    font-size: 14px;
+    margin: 0 0 8px 0;
+  }
+
+  /* Topbar vira coluna */
   .topbar{
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px;
   }
 
   .topbar h2{
-    margin-right: 0 !important;
     width: 100%;
+    margin-right: 0 !important;
+    font-size: 16px;
   }
 
-  /* badge (email) quebra linha e não estoura */
+  /* badge quebra linha e não estoura */
   .badge{
     width: 100%;
     word-break: break-word;
     line-height: 1.3;
   }
 
-  /* botão sair fica full width */
+  /* botão sair full */
   .topbar .btnGhost{
     width: 100%;
   }
 
-  /* cards com padding menor */
-  .card{ padding: 12px; }
-
-  /* Compra: inputs e select já viram 1 coluna (você já tinha) */
-  .purchaseGrid{
-    grid-template-columns: 1fr;
-  }
-
-  /* botões gerais full width (confirmar/admin) */
-  .card button{
-    width: 100%;
-  }
-
-  /* tabela: diminui min-width e melhora leitura */
-  .tableWrap{
-    border-radius: 12px;
-  }
-
-  table{
-    min-width: 520px; /* mantém scroll horizontal sem “quebrar” */
-  }
-
-  thead th, tbody td{
+  /* Inputs/Select compactos */
+  .input,
+  select,
+  input[type="number"]{
     padding: 10px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  /* Botões compactos e full */
+  .card button,
+  .btnPrimary,
+  .btnGhost{
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  /* Lançar compra: 2 colunas (Qtd + Total) */
+  .purchaseGrid{
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  /* Item ocupa linha inteira */
+  .purchaseGrid label:first-child{
+    grid-column: 1 / -1;
+  }
+
+  .purchaseGrid label span{
+    font-size: 12px;
+    opacity: .85;
+  }
+
+  /* Tabela mais "sem zoom" */
+  table{
+    min-width: 360px; /* reduz bastante a necessidade de zoom */
+  }
+
+  thead th,
+  tbody td{
+    padding: 8px;
+    font-size: 13px;
   }
 
   .monoTotal{
     font-size: 18px;
   }
 }
-
