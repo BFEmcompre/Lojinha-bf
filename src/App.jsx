@@ -541,9 +541,12 @@ const rows = [
 
 
   // Tela principal
-  return (
-    <div style={{ fontFamily: "system-ui", padding: 24, maxWidth: 1100, margin: "0 auto", minHeight: "100vh" }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+return (
+  <div className="shell">
+    <div className="container">
+
+	<div className="topbar">
+
         <h2 style={{ marginRight: "auto" }}>🍫 Lojinha BF</h2>
 
         <div style={{ fontSize: 12, opacity: 0.85 }}>
@@ -552,14 +555,18 @@ const rows = [
           {profile?.is_admin ? " • ADM" : ""}
         </div>
 
-        <button onClick={signOut}>Sair</button>
+        <button className="btnGhost" onClick={signOut}>Sair</button>
+
       </div>
 
       {msg && <p>{msg}</p>}
 
-      <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
-        <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 14 }}>
-          <h3 style={{ marginTop: 0 }}>🧾 Lançar compra</h3>
+	<div className="grid">
+
+  	 <div className="card">
+
+          <h3 className="cardTitle">🧾 Lançar compra</h3>
+
 
          <div className="purchaseGrid">
 <label style={{ display: "grid", gap: 6 }}>
@@ -587,47 +594,48 @@ const rows = [
           </button>
         </div>
 
-        <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 14 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-    <h3 style={{ marginTop: 0, marginRight: "auto" }}>
-  📆 Meu gasto do mês {myEmployee?.name ? `— ${myEmployee.name}` : ""}
-</h3>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{brl(monthSum)}</div>
-          </div>
+<div className="card">
+  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+    <h3 className="cardTitle" style={{ marginRight: "auto" }}>
+      📆 Meu gasto do mês {myEmployee?.name ? `— ${myEmployee.name}` : ""}
+    </h3>
+    <div className="monoTotal">{brl(monthSum)}</div>
+  </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table width="100%" cellPadding="8" style={{ borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th align="left">Data</th>
-                  <th align="left">Item</th>
-                  <th align="left">Qtd</th>
-                  <th align="left">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {myPurchases.map((p) => (
-                  <tr key={p.id} style={{ borderTop: "1px solid #eee" }}>
-                    <td>{new Date(p.created_at).toLocaleString("pt-BR")}</td>
-                    <td>{formatItem(p.item)}</td>
-                    <td>{p.qty}</td>
-                    <td>{brl(p.total)}</td>
-                  </tr>
-                ))}
-                {myPurchases.length === 0 && (
-                  <tr>
-                    <td colSpan="4" style={{ opacity: 0.7 }}>
-                      Sem compras neste mês.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+
+<div className="tableWrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Item</th>
+        <th>Qtd</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {myPurchases.map((p) => (
+        <tr key={p.id}>
+          <td>{new Date(p.created_at).toLocaleString("pt-BR")}</td>
+          <td>{formatItem(p.item)}</td>
+          <td>{p.qty}</td>
+          <td>{brl(p.total)}</td>
+        </tr>
+      ))}
+      {myPurchases.length === 0 && (
+        <tr>
+          <td colSpan="4" style={{ opacity: 0.7 }}>
+            Sem compras neste mês.
+          </td>
+        </tr>
+      )}
+    </tbody>
+  </table>
+</div>
 
         {profile?.is_admin && (
-          <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 14 }}>
+         <div className="card">
+
             <h3 style={{ marginTop: 0 }}>🛠 Admin</h3>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

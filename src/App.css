@@ -1,129 +1,41 @@
-:root { color-scheme: dark; }
+/* App.css (substituir o arquivo inteiro) */
 
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-  color: #fff;
-  background:
-    radial-gradient(800px 500px at 25% 10%, rgba(255, 60, 60, 0.20), transparent 60%),
-    radial-gradient(700px 450px at 85% 30%, rgba(255, 255, 255, 0.10), transparent 60%),
-    #0b0b0d;
+/* Base */
+:root{
+  color-scheme: dark;
 
+  --bg: #0b0b0d;
+  --surface: rgba(20,20,22,.92);
+  --surface-2: rgba(16,16,18,.75);
 
+  --border: rgba(255,255,255,.12);
+  --border-2: rgba(255,255,255,.18);
+
+  --text: rgba(255,255,255,.92);
+  --muted: rgba(255,255,255,.70);
+
+  --shadow: 0 30px 80px rgba(0,0,0,0.55);
+  --radius: 18px;
+
+  --pad: 18px;
+  --gap: 14px;
 }
 
+*{ box-sizing: border-box; }
 
-html, body, #root { height: 100%; }
+html, body, #root{ height: 100%; }
 
 body{
   margin: 0;
-  background: #0b0b0d; /* mesma cor do app */
-  color: #fff;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color: var(--text);
+  background:
+    radial-gradient(800px 500px at 25% 10%, rgba(255, 60, 60, 0.20), transparent 60%),
+    radial-gradient(700px 450px at 85% 30%, rgba(255, 255, 255, 0.10), transparent 60%),
+    var(--bg);
 }
 
-
-.page {
-  min-height: 100vh;
-  width: 100%;
-  background: #0f0f10;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-}
-
-
-.authCard {
-  width: 100%;
-  max-width: 460px;
-  background: rgba(16, 16, 18, 0.75);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 18px;
-  padding: 22px;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.55);
-  backdrop-filter: blur(10px);
-}
-
-.brandRow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.brandLogo {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: rgba(255,255,255,0.08);
-  padding: 8px;
-}
-
-.brandTitle {
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.1;
-}
-
-.brandSubtitle {
-  margin-top: 4px;
-  font-size: 13px;
-  opacity: 0.75;
-}
-
-.divider {
-  height: 1px;
-  background: rgba(255,255,255,0.12);
-  margin: 16px 0;
-}
-
-.form {
-  display: grid;
-  gap: 10px;
-}
-
-.label {
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-.input {
-  width: 100%;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(10,10,12,0.70);
-  color: #fff;
-  outline: none;
-}
-
-.input:focus {
-  border-color: rgba(255,255,255,0.30);
-}
-
-.btnPrimary {
-  margin-top: 6px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: none;
-  cursor: pointer;
-  font-weight: 800;
-  color: #111;
-  background: linear-gradient(90deg, #ffffff, #eaeaea);
-}
-
-.btnPrimary:active { transform: translateY(1px); }
-
-.msg {
-  margin-top: 8px;
-  font-size: 13px;
-  opacity: 0.9;
-}
-
-/* Base */
-* { box-sizing: border-box; }
-html, body { height: 100%; }
-body { margin: 0; background: #0b0b0d; color: #fff; }
-
-/* Centralizador (serve pro login e cadastro) */
+/* Centralizador (login/cadastro/kiosk) */
 .page{
   min-height: 100vh;
   display:flex;
@@ -132,86 +44,200 @@ body { margin: 0; background: #0b0b0d; color: #fff; }
   padding: 16px;
 }
 
+/* Card de auth / kiosk */
 .authCard{
   width: 100%;
   max-width: 520px;
-  background: rgba(20,20,22,.92);
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 18px;
-  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
 }
 
-.topRow{
+.brandRow{
   display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
+  align-items:center;
   gap: 12px;
 }
 
-.form{ display:grid; gap: 10px; }
+.brandLogo{
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  padding: 8px;
+}
 
-.label{ font-size: 13px; opacity: .85; }
+.brandTitle{
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+}
 
-.input{
+.brandSubtitle{
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.divider{
+  height: 1px;
+  background: var(--border);
+  margin: 14px 0;
+}
+
+/* Form */
+.form{
+  display:grid;
+  gap: 10px;
+}
+
+.label{
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.input,
+select,
+input[type="number"]{
   width: 100%;
-  padding: 12px 12px;
+  padding: 12px;
   border-radius: 12px;
   border: 1px solid rgba(255,255,255,.14);
   background: rgba(0,0,0,.25);
-  color: #fff;
+  color: var(--text);
   outline: none;
 }
 
+.input:focus,
+select:focus,
+input[type="number"]:focus{
+  border-color: rgba(255,255,255,.30);
+}
+
+/* Botões */
 .btnPrimary{
   width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
   border: 0;
-  background: #ffffff;
-  color: #111;
-  font-weight: 700;
   cursor: pointer;
+  font-weight: 800;
+  color: #111;
+  background: linear-gradient(90deg, #ffffff, #eaeaea);
 }
+.btnPrimary:active{ transform: translateY(1px); }
 
 .btnGhost{
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.18);
+  border: 1px solid var(--border-2);
   background: transparent;
-  color: #fff;
+  color: var(--text);
   cursor: pointer;
-}
-
-.divider{
-  height: 1px;
-  background: rgba(255,255,255,.12);
-  margin: 14px 0;
 }
 
 .msg{
   padding: 10px 12px;
   border-radius: 12px;
   background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.12);
+  border: 1px solid var(--border);
   font-size: 13px;
 }
 
-/* ===== Mobile fix geral: evita "zoom" e quebra grid ===== */
-@media (max-width: 640px){
-  .authCard{ padding: 14px; border-radius: 16px; }
-  .brandTitle{ font-size: 18px; }
+/* ===== Tela principal (app) ===== */
+.shell{
+  min-height: 100vh;
+  padding: 22px 16px;
+}
+
+.container{
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.topbar{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(16,16,18,.55);
+  backdrop-filter: blur(10px);
+}
+
+.topbar h2{
+  margin: 0;
+  margin-right: auto;
+  font-size: 18px;
+  letter-spacing: .2px;
+}
+
+.badge{
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.grid{
+  display:grid;
+  gap: var(--gap);
+  margin-top: var(--gap);
+}
+
+.card{
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(16,16,18,.55);
+  backdrop-filter: blur(10px);
+}
+
+.cardTitle{
+  margin: 0 0 10px 0;
+  font-size: 16px;
 }
 
 .purchaseGrid{
   display:grid;
   gap: 10px;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 140px 180px;
 }
-
 @media (max-width: 640px){
-  .purchaseGrid{
-    grid-template-columns: 1fr; /* vira uma coluna no celular */
-  }
+  .authCard{ padding: 14px; border-radius: 16px; }
+  .brandTitle{ font-size: 18px; }
+  .purchaseGrid{ grid-template-columns: 1fr; }
 }
 
+.tableWrap{
+  overflow-x:auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
 
+table{
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+thead th{
+  text-align:left;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody td{
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+.monoTotal{
+  font-size: 20px;
+  font-weight: 800;
+}
