@@ -276,58 +276,65 @@ export default function App() {
   }
 
   async function addPurchase() {
-    setMsg("");
+  setMsg("");
 
-    // pega sessão na hora (evita bug de estado antigo)
-    const { data: s } = await supabase.auth.getSession();
-    const userId = s?.session?.user?.id;
-    if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
+  const { data: s } = await supabase.auth.getSession();
+  const userId = s?.session?.user?.id;
+  if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
 
-    const payload = {
-      user_id: userId,
-      item,
-      unit_price: Number(PRICES[item]),
-      qty: Math.max(1, Number(qty || 1)),
-      total: Number(totalNow),
-    };
+  const payload = {
+    p_item: item,
+    p_qty: Math.max(1, Number(qty || 1)),
+    p_unit_price: Number(PRICES[item]),
+  };
 
-    const { error } = await supabase.from("purchases").insert([payload]);
-    if (error) return setMsg(error.message);
+  const { data, error } = await supabase.rpc("register_purchase_with_credit", payload);
+  if (error) return setMsg(error.message);
 
-    // ✅ 1) Toca som no próprio celular de quem registrou (opcional)
-    try {
-      const audio = new Audio("/confirm.mp3");
-      audio.volume = 1;
-      audio.play().catch(() => {});
-    } catch {}
-
-    // ✅ 2) Dispara aviso pro CELULAR DO BALCÃO (Realtime Broadcast)
-    try {
-      const { data: emp } = await supabase
-        .from("employees")
-        .select("name, sector, company")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      const ch = await getAudioChannel();
-
-      await ch.send({
-        type: "broadcast",
-        event: "purchase_registered",
-        payload: {
-          name: emp?.name || s.session.user.email,
-          sector: emp?.sector || "",
-          company: emp?.company || "",
-          item: formatItem(item),
-          qty: Math.max(1, Number(qty || 1)),
-          total: Number(totalNow),
-        },
-      });
-    } catch {}
-
-    setQty(1);
-    await loadMyPurchasesThisMonth();
+  const res = data?.[0];
+  if (res) {
+    setMsg(
+      `Compra registrada ✅ Total ${brl(res.total)} | Crédito usado ${brl(res.credit_used)} | Restante ${brl(res.remaining_to_pay)}`
+    );
   }
+
+  // beep do usuário (opcional)
+  try {
+    const audio = new Audio("/confirm.mp3");
+    audio.volume = 1;
+    audio.play().catch(() => {});
+  } catch {}
+
+  // broadcast pro balcão (mantém o que você já tem)
+  try {
+    const { data: emp } = await supabase
+      .from("employees")
+      .select("name, sector, company")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const ch = await getAudioChannel();
+    await ch.send({
+      type: "broadcast",
+      event: "purchase_registered",
+      payload: {
+        name: emp?.name || s.session.user.email,
+        sector: emp?.sector || "",
+        company: emp?.company || "",
+        item: formatItem(item),
+        qty: Math.max(1, Number(qty || 1)),
+        total: Number(res?.total ?? 0),
+      },
+    });
+  } catch {}
+
+  setQty(1);
+
+  // recarrega compras e crédito atualizado
+  await loadMyPurchasesThisMonth();
+  await loadMyEmployeeByUser(userId);
+}
+
 
   async function loadEmployeesForAdmin() {
     const { data, error } = await supabase
