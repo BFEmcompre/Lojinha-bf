@@ -294,7 +294,7 @@ export default function App() {
   const res = data?.[0];
   if (res) {
     setMsg(
-      ``Compra registrada ✅ | Total ${brl(totalNow)} | Crédito usado ${brl(row?.credit_used || 0)}`
+      `Compra registrada ✅ | Total ${brl(totalNow)} | Crédito usado ${brl(row?.credit_used || 0)}`
     );
   }
 
