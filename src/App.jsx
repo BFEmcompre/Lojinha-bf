@@ -212,7 +212,8 @@ if (isKiosk) return <Kiosk />;
   async function loadMyEmployeeByUser(userId) {
     const { data, error } = await supabase
       .from("employees")
-      .select("id, name, sector, company, active")
+      .select("id, name, sector, company, credit_balance, active")
+
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -312,6 +313,20 @@ await ch.send({
 
   // EXPORT ADMIN (seguro): junta por user_id e filtra empresa
   async function exportCSV(companyFilter) {
+
+const { start, end } = monthRangeISO(new Date());
+
+const { data: credits, error: e3 } = await supabase
+  .from("credit_ledger")
+  .select("created_at,user_id,amount,note")
+  .gte("created_at", start)
+  .lt("created_at", end)
+  .order("created_at", { ascending: false });
+
+if (e3) return alert("Erro credit_ledger: " + e3.message);
+
+
+
     setMsg("");
 
     const { data: s } = await supabase.auth.getSession();
@@ -556,6 +571,12 @@ return (
 </div>
 
 
+<div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
+  Crédito disponível: <b>{brl(myEmployee?.credit_balance || 0)}</b>
+</div>
+
+
+
         <button className="btnGhost" onClick={signOut}>
           Sair
         </button>
@@ -636,6 +657,13 @@ return (
 
         {/* Card: Admin (somente ADM) */}
         {profile?.is_admin && (
+
+await supabase.rpc("admin_add_credit", {
+  p_user: selectedUserId,
+  p_amount: Number(creditValue),
+  p_note: note || null,
+});
+
           <div className="card">
             <h3 className="cardTitle">🛠 Admin</h3>
 
