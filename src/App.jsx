@@ -4,6 +4,33 @@ import "./App.css";
 
 let audioCh = null;
 
+
+
+async function addCredit() {
+  if (!selectedUserId || !creditValue) {
+    setMsg("Selecione um usuário e informe o valor.");
+    return;
+  }
+
+  const { error } = await supabase.rpc("admin_add_credit", {
+    p_user: selectedUserId,
+    p_amount: Number(creditValue),
+    p_note: note || null,
+  });
+
+  if (error) {
+    setMsg(error.message);
+    return;
+  }
+
+  setMsg("Crédito lançado com sucesso ✅");
+  setCreditValue("");
+  setNote("");
+}
+
+
+
+
 async function getAudioChannel() {
   if (audioCh) return audioCh;
 
@@ -656,28 +683,27 @@ return (
         </div>
 
         {/* Card: Admin (somente ADM) */}
-        {profile?.is_admin && (
 
-await supabase.rpc("admin_add_credit", {
-  p_user: selectedUserId,
-  p_amount: Number(creditValue),
-  p_note: note || null,
-});
+{profile?.is_admin && (
+  <div className="card">
+    <h3 className="cardTitle">🛠 Admin</h3>
 
-          <div className="card">
-            <h3 className="cardTitle">🛠 Admin</h3>
+    <button onClick={addCredit}>
+      Lançar crédito
+    </button>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={() => exportCSV("FA")}>Exportar CSV F.A (mês)</button>
-              <button onClick={() => exportCSV("BF")}>Exportar CSV BF (mês)</button>
-              <button onClick={() => exportCSV("")}>Exportar CSV Geral (mês)</button>
-            </div>
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <button onClick={() => exportCSV("FA")}>Exportar CSV F.A (mês)</button>
+      <button onClick={() => exportCSV("BF")}>Exportar CSV BF (mês)</button>
+      <button onClick={() => exportCSV("")}>Exportar CSV Geral (mês)</button>
+    </div>
 
-            <p style={{ opacity: 0.75, marginTop: 10 }}>
-              Export traz: data, empresa, nome, setor, item, qtd, preço unit, total e user_id (auditoria).
-            </p>
-          </div>
-        )}
+    <p style={{ opacity: 0.75, marginTop: 10 }}>
+      Export traz: data, empresa, nome, setor, item, qtd, preço unit, total e user_id.
+    </p>
+  </div>
+)}
+
       </div>
     </div>
   </div>
