@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import "./App.css";
 
+/** =========================================================
+ *  Utils / constants
+ *  ========================================================= */
 let audioCh = null;
 
 async function getAudioChannel() {
@@ -11,7 +14,6 @@ async function getAudioChannel() {
     config: { broadcast: { self: false } },
   });
 
-  // garante que o canal está "SUBSCRIBED"
   await new Promise((resolve) => {
     audioCh.subscribe((status) => {
       if (status === "SUBSCRIBED") resolve();
@@ -45,6 +47,7 @@ function formatItem(item) {
   }
 }
 
+// mês atual: [primeiro dia do mês, primeiro dia do próximo mês)
 function monthRangeISO(d = new Date()) {
   const start = new Date(d.getFullYear(), d.getMonth(), 1);
   const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
@@ -52,7 +55,6 @@ function monthRangeISO(d = new Date()) {
 }
 
 function downloadCSV(filename, rows) {
-  // Excel BR costuma separar por ; e às vezes precisa do BOM
   const SEP = ";";
   const BOM = "\ufeff";
   const csv = rows
@@ -77,6 +79,9 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+/** =========================================================
+ *  Kiosk (modo balcão)
+ *  ========================================================= */
 function Kiosk() {
   const [enabled, setEnabled] = useState(false);
   const [lastMsg, setLastMsg] = useState("");
@@ -93,17 +98,14 @@ function Kiosk() {
         })`
       );
 
-      // toca som (só funciona após 1 interação)
       try {
         const audio = new Audio("/confirm.mp3");
         audio.volume = 1.0;
         audio.play().catch(() => {});
-      } catch (e) {}
+      } catch {}
     });
 
-    ch.subscribe((status) => {
-      console.log("Kiosk channel status:", status);
-    });
+    ch.subscribe((status) => console.log("Kiosk channel status:", status));
 
     return () => {
       supabase.removeChannel(ch);
@@ -111,7 +113,6 @@ function Kiosk() {
   }, []);
 
   function enableAudio() {
-    // desbloqueia autoplay com uma interação
     setEnabled(true);
     const audio = new Audio("/confirm.mp3");
     audio.volume = 0.01;
@@ -146,9 +147,11 @@ function Kiosk() {
   );
 }
 
+/** =========================================================
+ *  Main App
+ *  ========================================================= */
 export default function App() {
-  const isKiosk =
-    new URLSearchParams(window.location.search).get("kiosk") === "1";
+  const isKiosk = new URLSearchParams(window.location.search).get("kiosk") === "1";
   if (isKiosk) return <Kiosk />;
 
   // auth
@@ -160,48 +163,42 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [myEmployee, setMyEmployee] = useState(null);
 
-  // onboarding (cadastro)
+  // onboarding
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [fullName, setFullName] = useState("");
   const [sector, setSector] = useState("");
-  const [company, setCompany] = useState(""); // FA/BF
+  const [company, setCompany] = useState("");
 
-  // compras (usuário)
+  // compras
   const [item, setItem] = useState("DOCE_SALGADINHO");
   const [qty, setQty] = useState(1);
   const [myPurchases, setMyPurchases] = useState([]);
 
   const totalNow = useMemo(
-    () => PRICES[item] * Math.max(1, Number(qty || 1)),
+    () => Number(PRICES[item] || 0) * Math.max(1, Number(qty || 1)),
     [item, qty]
   );
   const monthSum = useMemo(
-    () => myPurchases.reduce((acc, p) => acc + (p.total || 0), 0),
+    () => myPurchases.reduce((acc, p) => acc + Number(p.total || 0), 0),
     [myPurchases]
   );
 
-  // ADMIN: crédito
+  /** ----------------- Admin: crédito (UI) ----------------- */
   const [showCredit, setShowCredit] = useState(false);
-  const [employeesList, setEmployeesList] = useState([]);
-  const [employeeSearch, setEmployeeSearch] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState("");
+  const [userQuery, setUserQuery] = useState("");
+  const [users, setUsers] = useState([]); // employees list (for search)
+  const [selectedUser, setSelectedUser] = useState(null); // {user_id, name, sector, company}
   const [creditValue, setCreditValue] = useState("");
   const [note, setNote] = useState("");
 
-  const filteredEmployees = useMemo(() => {
-    const q = employeeSearch.trim().toLowerCase();
-    if (!q) return employeesList;
-
-    return (employeesList || []).filter((e) => {
-      const a = `${e.name || ""} ${e.sector || ""} ${e.company || ""}`.toLowerCase();
-      return a.includes(q);
-    });
-  }, [employeesList, employeeSearch]);
-
-  // Auth listener
+  /** =========================================================
+   *  Auth listener
+   *  ========================================================= */
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) =>
+      setSession(s ?? null)
+    );
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -255,7 +252,11 @@ export default function App() {
 
     const prof = await loadProfile();
     if (!prof.employee_id) {
-      await supabase.from("profiles").update({ employee_id: emp.id }).eq("user_id", userId);
+      await supabase
+        .from("profiles")
+        .update({ employee_id: emp.id })
+        .eq("user_id", userId);
+
       const updated = await loadProfile();
       setProfile(updated);
     }
@@ -273,132 +274,168 @@ export default function App() {
 
     if (error) throw error;
     setMyPurchases(data ?? []);
+
+    // atualiza saldo do usuário (pra refletir na tela)
+    const userId = session?.user?.id;
+    if (userId) await loadMyEmployeeByUser(userId);
   }
 
+  /** =========================================================
+   *  Compra: debita crédito automaticamente
+   *  ========================================================= */
   async function addPurchase() {
-  setMsg("");
+    setMsg("");
 
-  const { data: s } = await supabase.auth.getSession();
-  const userId = s?.session?.user?.id;
-  if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
+    const { data: s } = await supabase.auth.getSession();
+    const userId = s?.session?.user?.id;
+    if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
 
-  const payload = {
-    p_item: item,
-    p_qty: Math.max(1, Number(qty || 1)),
-    p_unit_price: Number(PRICES[item]),
-  };
-
-  const { data, error } = await supabase.rpc("register_purchase_with_credit", payload);
-  if (error) return setMsg(error.message);
-
-  const res = data?.[0];
-  if (res) {
-    setMsg(
-      `Compra registrada ✅ | Total ${brl(totalNow)} | Crédito usado ${brl(row?.credit_used || 0)}`
-    );
-  }
-
-  // beep do usuário (opcional)
-  try {
-    const audio = new Audio("/confirm.mp3");
-    audio.volume = 1;
-    audio.play().catch(() => {});
-  } catch {}
-
-  // broadcast pro balcão (mantém o que você já tem)
-  try {
-    const { data: emp } = await supabase
+    // pega saldo atual do usuário (pra debitar certo)
+    const { data: emp, error: empErr } = await supabase
       .from("employees")
-      .select("name, sector, company")
+      .select("credit_balance,name,sector,company")
       .eq("user_id", userId)
       .maybeSingle();
+    if (empErr) return setMsg(empErr.message);
 
-    const ch = await getAudioChannel();
-    await ch.send({
-      type: "broadcast",
-      event: "purchase_registered",
-      payload: {
-        name: emp?.name || s.session.user.email,
-        sector: emp?.sector || "",
-        company: emp?.company || "",
-        item: formatItem(item),
-        qty: Math.max(1, Number(qty || 1)),
-        total: Number(res?.total ?? 0),
-      },
-    });
-  } catch {}
+    const creditBal = Number(emp?.credit_balance || 0);
+    const total = Number(totalNow);
 
-  setQty(1);
+    // usa crédito até o limite
+    const creditUsed = Math.min(creditBal, total);
+    const remainingToPay = Number((total - creditUsed).toFixed(2));
+    const newBalance = Number((creditBal - creditUsed).toFixed(2));
 
-  // recarrega compras e crédito atualizado
-  await loadMyPurchasesThisMonth();
-  await loadMyEmployeeByUser(userId);
-}
+    // 1) registra a compra normalmente
+    const payload = {
+      user_id: userId,
+      item,
+      unit_price: Number(PRICES[item]),
+      qty: Math.max(1, Number(qty || 1)),
+      total: total,
+    };
 
+    const { error: insErr } = await supabase.from("purchases").insert([payload]);
+    if (insErr) return setMsg(insErr.message);
 
-  async function loadEmployeesForAdmin() {
+    // 2) debita o saldo de crédito (se tiver usado)
+    if (creditUsed > 0) {
+      const { error: upErr } = await supabase
+        .from("employees")
+        .update({ credit_balance: newBalance })
+        .eq("user_id", userId);
+      if (upErr) return setMsg(upErr.message);
+    }
+
+    // mensagem (SEM "restante")
+    if (creditUsed > 0) {
+      setMsg(
+        `Compra registrada ✅  Total ${brl(total)} | Crédito usado ${brl(
+          creditUsed
+        )} | A pagar ${brl(remainingToPay)}`
+      );
+    } else {
+      setMsg(`Compra registrada ✅  Total ${brl(total)}`);
+    }
+
+    // 3) som local (opcional)
+    try {
+      const audio = new Audio("/confirm.mp3");
+      audio.volume = 1;
+      audio.play().catch(() => {});
+    } catch {}
+
+    // 4) aviso pro balcão
+    try {
+      const ch = await getAudioChannel();
+      await ch.send({
+        type: "broadcast",
+        event: "purchase_registered",
+        payload: {
+          name: emp?.name || s.session.user.email,
+          sector: emp?.sector || "",
+          company: emp?.company || "",
+          item: formatItem(item),
+          qty: Math.max(1, Number(qty || 1)),
+          total: total,
+        },
+      });
+    } catch {}
+
+    setQty(1);
+    await loadMyPurchasesThisMonth();
+  }
+
+  /** =========================================================
+   *  Admin: carregar lista de pessoas para busca
+   *  ========================================================= */
+  async function adminLoadUsersForCredit() {
     const { data, error } = await supabase
       .from("employees")
       .select("user_id,name,sector,company,active")
       .eq("active", true)
       .order("name", { ascending: true });
 
-    if (error) return setMsg(error.message);
-    setEmployeesList(data || []);
+    if (error) throw error;
+    setUsers(data ?? []);
   }
 
-  async function addCredit() {
+  /** =========================================================
+   *  Admin: lançar crédito via RPC
+   *  ========================================================= */
+  async function adminAddCredit() {
     setMsg("");
 
-    if (!selectedUserId) return setMsg("Selecione um usuário.");
-    const amount = Number(String(creditValue).replace(",", "."));
-    if (!amount || amount <= 0) return setMsg("Informe um valor válido.");
+    if (!selectedUser?.user_id) {
+      setMsg("Selecione uma pessoa.");
+      return;
+    }
+
+    const val = Number(String(creditValue).replace(",", "."));
+    if (!val || val <= 0) {
+      setMsg("Informe um valor válido (maior que zero).");
+      return;
+    }
 
     const { error } = await supabase.rpc("admin_add_credit", {
-      p_user: selectedUserId,
-      p_amount: amount,
+      p_user: selectedUser.user_id,
+      p_amount: val,
       p_note: note?.trim() || null,
     });
 
-    if (error) return setMsg(error.message);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
 
     setMsg("Crédito lançado com sucesso ✅");
     setCreditValue("");
     setNote("");
-    setSelectedUserId("");
-    setEmployeeSearch("");
+    setSelectedUser(null);
+    setUserQuery("");
     setShowCredit(false);
 
-    // Atualiza o saldo do usuário logado (se for ele)
-    if (session?.user?.id) {
-      await loadMyEmployeeByUser(session.user.id);
-    }
+    // atualiza meu saldo se eu for o mesmo usuário
+    const myId = session?.user?.id;
+    if (myId) await loadMyEmployeeByUser(myId);
   }
 
-  // EXPORT ADMIN: (mantive igual ao seu, só corrigi start/end e ordem)
+  /** =========================================================
+   *  Export mensal (compras + resumo + credit_ledger)
+   *  ========================================================= */
   async function exportCSV(companyFilter) {
     setMsg("");
 
     const { data: s } = await supabase.auth.getSession();
     if (!s?.session) return alert("Sessão expirada.");
 
-    // intervalo do mês (precisa existir ANTES de usar no credit_ledger)
+    // mês atual
     const { start, end } = monthRangeISO(new Date());
 
-    const { data: credits, error: e3 } = await supabase
-      .from("credit_ledger")
-      .select("created_at,user_id,amount,note")
-      .gte("created_at", start)
-      .lt("created_at", end)
-      .order("created_at", { ascending: false });
-
-    if (e3) return alert("Erro credit_ledger: " + e3.message);
-
-    // employees (nome/setor/empresa)
+    // employees
     const { data: emps, error: e1 } = await supabase
       .from("employees")
-      .select("user_id,name,sector,company,active");
-
+      .select("user_id,name,sector,company,active,credit_balance");
     if (e1) return alert("Erro employees: " + e1.message);
 
     const empMap = new Map(
@@ -407,17 +444,16 @@ export default function App() {
         .map((x) => [x.user_id, x])
     );
 
-    // compras do mês
+    // purchases do mês
     const { data: pur, error: e2 } = await supabase
       .from("purchases")
       .select("created_at,user_id,item,unit_price,qty,total")
       .gte("created_at", start)
       .lt("created_at", end)
       .order("created_at", { ascending: false });
-
     if (e2) return alert("Erro purchases: " + e2.message);
 
-    const rowsObj = (pur || []).map((p) => {
+    const purchasesRowsObj = (pur || []).map((p) => {
       const emp = empMap.get(p.user_id);
       return {
         data: new Date(p.created_at).toLocaleString("pt-BR"),
@@ -432,11 +468,13 @@ export default function App() {
       };
     });
 
-    const filtered = companyFilter ? rowsObj.filter((r) => r.empresa === companyFilter) : rowsObj;
+    const filteredPurchases = companyFilter
+      ? purchasesRowsObj.filter((r) => r.empresa === companyFilter)
+      : purchasesRowsObj;
 
-    // RESUMO POR USUÁRIO
+    // resumo por usuário (total de compras do mês)
     const summaryMap = new Map();
-    for (const r of filtered) {
+    for (const r of filteredPurchases) {
       const key = `${r.user_id}__${r.nome}__${r.setor}__${r.empresa}`;
       const prev = summaryMap.get(key) || 0;
       summaryMap.set(key, prev + Number(r.total || 0));
@@ -446,10 +484,17 @@ export default function App() {
       const [user_id, nome, setor, empresa] = key.split("__");
       return { empresa, nome, setor, total_mes: sum, user_id };
     });
-
     summaryRows.sort((a, b) => b.total_mes - a.total_mes);
 
-    // Créditos detalhados (para auditoria no mesmo CSV)
+    // credit_ledger do mês
+    const { data: credits, error: e3 } = await supabase
+      .from("credit_ledger")
+      .select("created_at,user_id,amount,note")
+      .gte("created_at", start)
+      .lt("created_at", end)
+      .order("created_at", { ascending: false });
+    if (e3) return alert("Erro credit_ledger: " + e3.message);
+
     const creditRowsObj = (credits || []).map((c) => {
       const emp = empMap.get(c.user_id);
       return {
@@ -457,50 +502,52 @@ export default function App() {
         empresa: emp?.company ?? "",
         nome: emp?.name ?? "",
         setor: emp?.sector ?? "",
-        valor: c.amount,
-        note: c.note || "",
+        valor: Number(c.amount || 0),
+        nota: c.note ?? "",
         user_id: c.user_id,
       };
     });
 
-    const creditFiltered = companyFilter
+    const filteredCredits = companyFilter
       ? creditRowsObj.filter((r) => r.empresa === companyFilter)
       : creditRowsObj;
 
     const rows = [
-      ["DETALHADO COMPRAS"],
+      ["DETALHADO (COMPRAS DO MÊS)"],
       ["Data", "Empresa", "Nome", "Setor", "Item", "Qtd", "Preço Unit", "Total", "UserId"],
-      ...filtered.map((r) => [
+      ...filteredPurchases.map((r) => [
         r.data,
         r.empresa,
         r.nome,
         r.setor,
         r.item,
         r.qtd,
-        r.unit_price,
-        r.total,
+        brl(r.unit_price),
+        brl(r.total),
         r.user_id,
       ]),
+
       [],
-      ["RESUMO POR USUÁRIO (TOTAL DO MÊS)"],
+      ["RESUMO POR USUÁRIO (TOTAL DE COMPRAS NO MÊS)"],
       ["Empresa", "Nome", "Setor", "Total do mês", "UserId"],
-      ...summaryRows.map((s) => [
-        s.empresa,
-        s.nome,
-        s.setor,
-        Number(s.total_mes || 0).toFixed(2).replace(".", ","),
-        s.user_id,
+      ...summaryRows.map((srow) => [
+        srow.empresa,
+        srow.nome,
+        srow.setor,
+        brl(srow.total_mes),
+        srow.user_id,
       ]),
+
       [],
-      ["CRÉDITOS LANÇADOS (MÊS)"],
-      ["Data", "Empresa", "Nome", "Setor", "Valor", "Obs", "UserId"],
-      ...creditFiltered.map((c) => [
+      ["CRÉDITOS (LANÇAMENTOS DO MÊS)"],
+      ["Data", "Empresa", "Nome", "Setor", "Valor", "Nota", "UserId"],
+      ...filteredCredits.map((c) => [
         c.data,
         c.empresa,
         c.nome,
         c.setor,
-        String(c.valor ?? "").replace(".", ","),
-        c.note,
+        brl(c.valor),
+        c.nota,
         c.user_id,
       ]),
     ];
@@ -511,7 +558,9 @@ export default function App() {
     );
   }
 
-  // Quando loga: carrega profile e verifica onboarding
+  /** =========================================================
+   *  Effects: ao logar
+   *  ========================================================= */
   useEffect(() => {
     if (!session?.user?.id) return;
     (async () => {
@@ -526,14 +575,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
 
-  // Quando onboarding terminar, carregar compras e employee
   useEffect(() => {
     if (!session?.user?.id) return;
     if (needsOnboarding) return;
     (async () => {
       try {
         await loadMyPurchasesThisMonth();
-        await loadMyEmployeeByUser(session.user.id);
       } catch (e) {
         setMsg(e.message ?? String(e));
       }
@@ -541,16 +588,23 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsOnboarding, session?.user?.id]);
 
-  // Carrega lista de employees quando abrir o lançamento de crédito
+  // quando abrir modal de crédito, carrega pessoas
   useEffect(() => {
     if (!profile?.is_admin) return;
     if (!showCredit) return;
-    loadEmployeesForAdmin();
+    (async () => {
+      try {
+        await adminLoadUsersForCredit();
+      } catch (e) {
+        setMsg(e.message ?? String(e));
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.is_admin, showCredit]);
+  }, [showCredit, profile?.is_admin]);
 
-  // --- TELAS ---
-
+  /** =========================================================
+   *  UI: Auth / onboarding / app
+   *  ========================================================= */
   if (!session) {
     return (
       <div className="page">
@@ -585,7 +639,6 @@ export default function App() {
     );
   }
 
-  // Tela de cadastro (aparece no 1º acesso)
   if (needsOnboarding) {
     return (
       <div className="page">
@@ -678,7 +731,14 @@ export default function App() {
     );
   }
 
-  // Tela principal
+  // Busca (filtro do autocomplete)
+  const filteredUsers = users.filter((u) => {
+    const q = userQuery.trim().toLowerCase();
+    if (!q) return true;
+    const hay = `${u.name || ""} ${u.sector || ""} ${u.company || ""}`.toLowerCase();
+    return hay.includes(q);
+  });
+
   return (
     <div className="shell">
       <div className="container">
@@ -693,9 +753,7 @@ export default function App() {
                 })`
               : ""}
             {profile?.is_admin ? " • ADM" : ""}
-          </div>
-
-          <div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
+            {" • "}
             Crédito disponível: <b>{brl(myEmployee?.credit_balance || 0)}</b>
           </div>
 
@@ -704,7 +762,7 @@ export default function App() {
           </button>
         </div>
 
-        {msg && <p>{msg}</p>}
+        {msg && <div className="msg">{msg}</div>}
 
         <div className="grid">
           {/* Card: Lançar compra */}
@@ -744,14 +802,7 @@ export default function App() {
 
           {/* Card: Meu gasto do mês */}
           <div className="card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <h3 className="cardTitle" style={{ marginRight: "auto" }}>
                 📆 Meu gasto do mês {myEmployee?.name ? `— ${myEmployee.name}` : ""}
               </h3>
@@ -789,7 +840,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Card: Admin (somente ADM) */}
+          {/* Card: Admin */}
           {profile?.is_admin && (
             <div className="card">
               <h3 className="cardTitle">🛠 Admin</h3>
@@ -798,69 +849,124 @@ export default function App() {
                 <button onClick={() => exportCSV("FA")}>Exportar CSV F.A (mês)</button>
                 <button onClick={() => exportCSV("BF")}>Exportar CSV BF (mês)</button>
                 <button onClick={() => exportCSV("")}>Exportar CSV Geral (mês)</button>
-                <button onClick={() => setShowCredit((v) => !v)}>
-                  {showCredit ? "Fechar crédito" : "Lançar crédito"}
-                </button>
+                <button onClick={() => setShowCredit(true)}>Lançar crédito</button>
               </div>
 
-              {/* Painel de crédito (não muda o layout do site: usa o mesmo card/form/input) */}
-              {showCredit && (
-                <div style={{ marginTop: 12 }}>
-                  <div className="divider" />
-
-                  <div className="form">
-                    <label className="label">Buscar pessoa</label>
-                    <input
-                      className="input"
-                      value={employeeSearch}
-                      onChange={(e) => setEmployeeSearch(e.target.value)}
-                      placeholder="Digite nome, setor ou empresa..."
-                    />
-
-                    <label className="label">Selecione</label>
-                    <select
-                      className="input"
-                      value={selectedUserId}
-                      onChange={(e) => setSelectedUserId(e.target.value)}
-                    >
-                      <option value="">Selecione...</option>
-                      {filteredEmployees.map((e) => (
-                        <option key={e.user_id} value={e.user_id}>
-                          {e.name} • {e.sector} • {e.company}
-                        </option>
-                      ))}
-                    </select>
-
-                    <label className="label">Valor do crédito (R$)</label>
-                    <input
-                      className="input"
-                      value={creditValue}
-                      onChange={(e) => setCreditValue(e.target.value)}
-                      placeholder="Ex: 10,00"
-                    />
-
-                    <label className="label">Observação (opcional)</label>
-                    <input
-                      className="input"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="Ex: pagou em dinheiro"
-                    />
-
-                    <button className="btnPrimary" onClick={addCredit}>
-                      Confirmar crédito
-                    </button>
-                  </div>
-                </div>
-              )}
-
               <p style={{ opacity: 0.75, marginTop: 10 }}>
-                Export traz: data, empresa, nome, setor, item, qtd, preço unit, total e user_id.
+                Export traz: compras do mês (detalhado), resumo por usuário e lançamentos de crédito do mês.
               </p>
             </div>
           )}
         </div>
       </div>
+
+      {/* Modal: Lançar crédito */}
+      {profile?.is_admin && showCredit && (
+        <div
+          onClick={() => setShowCredit(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            className="authCard"
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 560 }}
+          >
+            <div className="topRow">
+              <div>
+                <div className="brandTitle">Lançar crédito</div>
+                <div className="brandSubtitle">
+                  Busque uma pessoa, informe o valor e (opcional) uma observação.
+                </div>
+              </div>
+              <button className="btnGhost" onClick={() => setShowCredit(false)}>
+                Fechar
+              </button>
+            </div>
+
+            <div className="divider" />
+
+            <div className="form">
+              <label className="label">Buscar pessoa</label>
+              <input
+                className="input"
+                value={userQuery}
+                onChange={(e) => {
+                  setUserQuery(e.target.value);
+                  setSelectedUser(null);
+                }}
+                placeholder="Digite nome, setor ou empresa..."
+              />
+
+              <div
+                style={{
+                  maxHeight: 180,
+                  overflow: "auto",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 10,
+                }}
+              >
+                {filteredUsers.slice(0, 20).map((u) => (
+                  <div
+                    key={u.user_id}
+                    onClick={() => {
+                      setSelectedUser(u);
+                      setUserQuery(`${u.name} • ${u.sector} • ${u.company}`);
+                    }}
+                    style={{
+                      padding: "10px 12px",
+                      cursor: "pointer",
+                      borderTop: "1px solid rgba(255,255,255,0.06)",
+                      opacity:
+                        selectedUser?.user_id === u.user_id ? 1 : 0.92,
+                    }}
+                  >
+                    <b>{u.name}</b>{" "}
+                    <span style={{ opacity: 0.8 }}>
+                      — {u.sector} ({u.company})
+                    </span>
+                  </div>
+                ))}
+                {filteredUsers.length === 0 && (
+                  <div style={{ padding: 12, opacity: 0.8 }}>
+                    Nenhum usuário encontrado.
+                  </div>
+                )}
+              </div>
+
+              <label className="label" style={{ marginTop: 10 }}>
+                Valor do crédito (R$)
+              </label>
+              <input
+                className="input"
+                value={creditValue}
+                onChange={(e) => setCreditValue(e.target.value)}
+                placeholder="Ex: 10,00"
+              />
+
+              <label className="label">Observação (opcional)</label>
+              <input
+                className="input"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Ex: troco, ajuste, pagamento parcial..."
+              />
+
+              <button className="btnPrimary" onClick={adminAddCredit}>
+                Confirmar lançamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
