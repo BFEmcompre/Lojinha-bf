@@ -341,8 +341,6 @@ await ch.send({
   // EXPORT ADMIN (seguro): junta por user_id e filtra empresa
   async function exportCSV(companyFilter) {
 
-const { start, end } = monthRangeISO(new Date());
-
 const { data: credits, error: e3 } = await supabase
   .from("credit_ledger")
   .select("created_at,user_id,amount,note")
