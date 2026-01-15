@@ -11,7 +11,6 @@ async function getAudioChannel() {
     config: { broadcast: { self: false } },
   });
 
-  // garante SUBSCRIBED
   await new Promise((resolve) => {
     audioCh.subscribe((status) => {
       if (status === "SUBSCRIBED") resolve();
@@ -73,21 +72,25 @@ function downloadCSV(filename, rows) {
 }
 
 /* =========================
-   MODO BALCÃO (POS)
+   KIOSK (Balcão) — compras com PIN
 ========================= */
 function KioskPOS() {
-  // precisa estar logado (tablet com conta ADM fixa)
   const [session, setSession] = useState(null);
   const [msg, setMsg] = useState("");
 
   const [employees, setEmployees] = useState([]);
+  const [companyFilter, setCompanyFilter] = useState("FA"); // FA / BF
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState(null);
 
   const [item, setItem] = useState("DOCE_SALGADINHO");
   const [qty, setQty] = useState(1);
+  const [pin, setPin] = useState("");
 
-  const totalNow = useMemo(() => Number(PRICES[item] || 0) * Math.max(1, Number(qty || 1)), [item, qty]);
+  const totalNow = useMemo(
+    () => Number(PRICES[item] || 0) * Math.max(1, Number(qty || 1)),
+    [item, qty]
+  );
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
@@ -104,7 +107,7 @@ function KioskPOS() {
     setMsg("");
     const { data, error } = await supabase
       .from("employees")
-      .select("id,user_id,name,sector,company,credit_balance,active")
+      .select("user_id,name,sector,company,active")
       .eq("active", true)
       .order("name", { ascending: true });
 
@@ -120,37 +123,41 @@ function KioskPOS() {
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return employees.slice(0, 30);
-    return employees
+    const base = employees.filter((e) => (companyFilter ? e.company === companyFilter : true));
+    if (!s) return base.slice(0, 40);
+
+    return base
       .filter((e) => {
-        const hay = `${e.name} ${e.sector} ${e.company}`.toLowerCase();
+        const hay = `${e.name} ${e.sector}`.toLowerCase();
         return hay.includes(s);
       })
-      .slice(0, 30);
-  }, [q, employees]);
+      .slice(0, 40);
+  }, [q, employees, companyFilter]);
 
-  async function confirmKioskPurchase() {
+  async function confirmPurchase() {
     setMsg("");
+
     if (!selected?.user_id) return setMsg("Selecione uma pessoa.");
+    if (!/^\d{4}$/.test(pin)) return setMsg("Informe o PIN de 4 dígitos.");
     const safeQty = Math.max(1, Number(qty || 1));
 
-    // registra compra no banco via RPC (admin-only)
-    const { error } = await supabase.rpc("kiosk_add_purchase", {
+    const { error } = await supabase.rpc("kiosk_add_purchase_with_pin", {
       p_user: selected.user_id,
+      p_pin: pin,
       p_item: item,
       p_qty: safeQty,
     });
 
     if (error) return setMsg(error.message);
 
-    // aviso sonoro do balcão (opcional: no seu celular do balcão mesmo)
+    // som no balcão
     try {
       const audio = new Audio("/confirm.mp3");
-      audio.volume = 1.0;
+      audio.volume = 1;
       audio.play().catch(() => {});
     } catch {}
 
-    // broadcast para modo balcão/alto-falante (se você quiser manter um segundo device só pro som)
+    // broadcast opcional (se você usar outro device só pro som)
     try {
       const ch = await getAudioChannel();
       await ch.send({
@@ -162,25 +169,25 @@ function KioskPOS() {
           company: selected?.company || "",
           item: formatItem(item),
           qty: safeQty,
-          total: Number(PRICES[item]) * safeQty,
+          total: totalNow,
         },
       });
     } catch {}
 
     setQty(1);
+    setPin("");
     setMsg(`Compra registrada ✅ (${selected.name} • ${formatItem(item)} x${safeQty} • ${brl(totalNow)})`);
   }
 
-  // Se não tem sessão, reaproveita sua tela normal de login do app (magic link)
   if (!session) {
     return (
       <div className="page">
         <div className="authCard" style={{ textAlign: "center" }}>
           <div className="brandTitle">🧾 Modo Balcão</div>
-          <div className="brandSubtitle">Faça login (conta ADM) para registrar compras no balcão</div>
+          <div className="brandSubtitle">Faça login (conta ADM) para registrar compras</div>
           <div className="divider" />
           <div style={{ opacity: 0.8, fontSize: 13 }}>
-            Abra o app normal e faça login. Depois volte aqui.
+            Abra o app normal, faça login e volte aqui.
             <br />
             (ou deixe o tablet sempre logado)
           </div>
@@ -193,7 +200,7 @@ function KioskPOS() {
     <div className="shell">
       <div className="container">
         <div className="topbar">
-          <h2 style={{ marginRight: "auto" }}>🧾 Lojinha BF — Balcão</h2>
+          <h2 style={{ marginRight: "auto" }}>🧾 Lojinha — Balcão</h2>
           <div className="badge">{session.user.email} • KIOSK</div>
           <button className="btnGhost" onClick={signOut}>Sair</button>
         </div>
@@ -204,13 +211,14 @@ function KioskPOS() {
           <div className="card">
             <h3 className="cardTitle">👤 Selecionar pessoa</h3>
 
-            <label className="label">Buscar (nome / setor / empresa)</label>
-            <input
-              className="input"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Ex: Gabriel, Logística, FA..."
-            />
+            <label className="label">Empresa</label>
+            <select className="input" value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)}>
+              <option value="FA">F.A</option>
+              <option value="BF">BF Colchões</option>
+            </select>
+
+            <label className="label" style={{ marginTop: 10 }}>Buscar (nome / setor)</label>
+            <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ex: Ana, Financeiro..." />
 
             <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
               {filtered.map((e) => (
@@ -224,9 +232,7 @@ function KioskPOS() {
                   }}
                 >
                   <div style={{ fontWeight: 700 }}>{e.name}</div>
-                  <div style={{ fontSize: 12, opacity: 0.85 }}>
-                    {e.sector} • {e.company} • Crédito: <b>{brl(e.credit_balance || 0)}</b>
-                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.85 }}>{e.sector}</div>
                 </button>
               ))}
               {filtered.length === 0 && <div style={{ opacity: 0.7 }}>Nenhum resultado.</div>}
@@ -234,11 +240,10 @@ function KioskPOS() {
           </div>
 
           <div className="card">
-            <h3 className="cardTitle">🛒 Registrar compra</h3>
+            <h3 className="cardTitle">🛒 Registrar compra (PIN)</h3>
 
             <div style={{ opacity: 0.85, marginBottom: 10 }}>
-              Selecionado:{" "}
-              <b>{selected ? `${selected.name} (${selected.sector} / ${selected.company})` : "—"}</b>
+              Selecionado: <b>{selected ? `${selected.name} (${selected.sector})` : "—"}</b>
             </div>
 
             <div className="purchaseGrid">
@@ -262,13 +267,20 @@ function KioskPOS() {
               </label>
             </div>
 
-            <button className="btnPrimary" onClick={confirmKioskPurchase} style={{ marginTop: 12 }}>
+            <label className="label" style={{ marginTop: 10 }}>PIN (4 dígitos)</label>
+            <input
+              className="input"
+              inputMode="numeric"
+              pattern="\d{4}"
+              maxLength={4}
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="••••"
+            />
+
+            <button className="btnPrimary" onClick={confirmPurchase} style={{ marginTop: 12 }}>
               Confirmar compra
             </button>
-
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-              Dica: deixe este tablet em tela cheia com a URL <b>?kiosk=1</b>.
-            </div>
           </div>
         </div>
       </div>
@@ -277,12 +289,14 @@ function KioskPOS() {
 }
 
 /* =========================
-   APP NORMAL (somente extrato)
+   APP NORMAL (sem compra, só extrato + PIN)
 ========================= */
 export default function App() {
   const params = new URLSearchParams(window.location.search);
   const isKiosk = params.get("kiosk") === "1";
   if (isKiosk) return <KioskPOS />;
+
+  const isSetPin = params.get("setpin") === "1";
 
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
@@ -295,9 +309,12 @@ export default function App() {
   const [fullName, setFullName] = useState("");
   const [sector, setSector] = useState("");
   const [company, setCompany] = useState("");
+  const [pin1, setPin1] = useState("");
+  const [pin2, setPin2] = useState("");
+
+  const [showPin, setShowPin] = useState(false);
 
   const [myPurchases, setMyPurchases] = useState([]);
-
   const monthSum = useMemo(() => myPurchases.reduce((acc, p) => acc + (p.total || 0), 0), [myPurchases]);
 
   useEffect(() => {
@@ -322,6 +339,21 @@ export default function App() {
     window.location.reload();
   }
 
+  async function sendPinResetLink() {
+    setMsg("");
+    const { data: s } = await supabase.auth.getSession();
+    const mail = s?.session?.user?.email;
+    if (!mail) return setMsg("Sessão expirada.");
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: mail,
+      options: { emailRedirectTo: `${window.location.origin}?setpin=1` },
+    });
+
+    if (error) return setMsg(error.message);
+    setMsg("Enviamos um link para trocar seu PIN 📩");
+  }
+
   async function loadProfile() {
     const { data, error } = await supabase
       .from("profiles")
@@ -335,7 +367,7 @@ export default function App() {
   async function loadMyEmployeeByUser(userId) {
     const { data, error } = await supabase
       .from("employees")
-      .select("id, name, sector, company, credit_balance, active")
+      .select("id, name, sector, company, credit_balance, pin_last4, active")
       .eq("user_id", userId)
       .maybeSingle();
     if (error) throw error;
@@ -359,6 +391,7 @@ export default function App() {
       const updated = await loadProfile();
       setProfile(updated);
     }
+
     setNeedsOnboarding(false);
   }
 
@@ -370,15 +403,13 @@ export default function App() {
       .gte("created_at", start)
       .lt("created_at", end)
       .order("created_at", { ascending: false });
-
     if (error) throw error;
     setMyPurchases(data ?? []);
   }
 
-  // EXPORT ADMIN (o seu atual)
+  // Export do jeito que você já usa
   async function exportCSV(companyFilter) {
     setMsg("");
-
     const { data: s } = await supabase.auth.getSession();
     if (!s?.session) return alert("Sessão expirada.");
 
@@ -421,7 +452,6 @@ export default function App() {
 
     const filtered = companyFilter ? rowsObj.filter((r) => r.empresa === companyFilter) : rowsObj;
 
-    // resumo por usuário
     const summaryMap = new Map();
     for (const r of filtered) {
       const key = `${r.user_id}__${r.nome}__${r.setor}__${r.empresa}`;
@@ -433,6 +463,7 @@ export default function App() {
       const [user_id, nome, setor, empresa] = key.split("__");
       return { empresa, nome, setor, total_mes: sum, user_id };
     });
+
     summaryRows.sort((a, b) => b.total_mes - a.total_mes);
 
     const rows = [
@@ -473,12 +504,15 @@ export default function App() {
     (async () => {
       try {
         await loadMyPurchasesThisMonth();
+        await loadMyEmployeeByUser(session.user.id);
       } catch (e) {
         setMsg(e.message ?? String(e));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsOnboarding, session?.user?.id]);
+
+  /* ========== TELAS ========== */
 
   if (!session) {
     return (
@@ -496,12 +530,7 @@ export default function App() {
 
           <form onSubmit={sendMagicLink} className="form">
             <label className="label">E-mail</label>
-            <input
-              className="input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="seuemail@emcompre.com.br"
-            />
+            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seuemail@..." />
             <button className="btnPrimary" type="submit">Enviar link</button>
             {msg && <div className="msg">{msg}</div>}
           </form>
@@ -510,6 +539,60 @@ export default function App() {
     );
   }
 
+  // Trocar PIN via link (?setpin=1)
+  if (isSetPin) {
+    return (
+      <div className="page">
+        <div className="authCard">
+          <div className="topRow">
+            <div>
+              <div className="brandTitle">🔐 Alterar PIN</div>
+              <div className="brandSubtitle">Defina um novo PIN de 4 dígitos</div>
+            </div>
+            <button className="btnGhost" onClick={signOut}>Sair</button>
+          </div>
+
+          <div className="divider" />
+
+          <div className="form">
+            <label className="label">Novo PIN</label>
+            <input className="input" inputMode="numeric" maxLength={4} value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" />
+
+            <label className="label">Confirmar PIN</label>
+            <input className="input" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" />
+
+            <button
+              className="btnPrimary"
+              onClick={async () => {
+                setMsg("");
+                if (!/^\d{4}$/.test(pin1)) return setMsg("PIN deve ter 4 dígitos.");
+                if (pin1 !== pin2) return setMsg("PINs não conferem.");
+
+                const { error } = await supabase.rpc("set_my_pin", { p_pin: pin1 });
+                if (error) return setMsg(error.message);
+
+                // remove ?setpin=1
+                const url = new URL(window.location.href);
+                url.searchParams.delete("setpin");
+                window.history.replaceState({}, "", url.toString());
+
+                setMsg("PIN atualizado com sucesso ✅");
+                setPin1("");
+                setPin2("");
+                await loadMyEmployeeByUser(session.user.id);
+              }}
+            >
+              Salvar novo PIN
+            </button>
+
+            {msg && <div className="msg">{msg}</div>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Onboarding com PIN + confirmação
   if (needsOnboarding) {
     return (
       <div className="page">
@@ -517,7 +600,7 @@ export default function App() {
           <div className="topRow">
             <div>
               <div className="brandTitle">Complete seu cadastro</div>
-              <div className="brandSubtitle">Primeiro acesso. Preencha nome, setor e empresa.</div>
+              <div className="brandSubtitle">Nome, setor, empresa e PIN (4 dígitos)</div>
             </div>
             <button className="btnGhost" onClick={signOut}>Sair</button>
           </div>
@@ -526,7 +609,7 @@ export default function App() {
 
           <div className="form">
             <label className="label">Nome completo</label>
-            <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome completo" />
+            <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome" />
 
             <label className="label">Setor</label>
             <input className="input" value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Seu setor" />
@@ -538,28 +621,34 @@ export default function App() {
               <option value="BF">BF Colchões</option>
             </select>
 
+            <label className="label">PIN (4 dígitos)</label>
+            <input className="input" inputMode="numeric" maxLength={4} value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" />
+
+            <label className="label">Confirmar PIN</label>
+            <input className="input" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" />
+
             <button
               className="btnPrimary"
               onClick={async () => {
                 setMsg("");
                 if (!fullName.trim() || !sector.trim() || !company) return setMsg("Preencha nome, setor e empresa.");
+                if (!/^\d{4}$/.test(pin1)) return setMsg("PIN deve ter 4 dígitos.");
+                if (pin1 !== pin2) return setMsg("PINs não conferem.");
 
-                const userId = session.user.id;
-
-                const { data, error } = await supabase
-                  .from("employees")
-                  .insert([{ user_id: userId, name: fullName.trim(), sector: sector.trim(), company, active: true }])
-                  .select("id")
-                  .single();
+                const { error } = await supabase.rpc("onboard_me", {
+                  p_name: fullName.trim(),
+                  p_sector: sector.trim(),
+                  p_company: company,
+                  p_pin: pin1,
+                });
 
                 if (error) return setMsg(error.message);
 
-                const { error: e2 } = await supabase.from("profiles").update({ employee_id: data.id }).eq("user_id", userId);
-                if (e2) return setMsg(e2.message);
-
                 setNeedsOnboarding(false);
+                setPin1("");
+                setPin2("");
                 await loadProfile();
-                await loadMyEmployeeByUser(userId);
+                await loadMyEmployeeByUser(session.user.id);
               }}
             >
               Salvar cadastro
@@ -572,6 +661,7 @@ export default function App() {
     );
   }
 
+  // Tela normal (sem compras — só extrato + crédito + PIN + admin/export)
   return (
     <div className="shell">
       <div className="container">
@@ -582,8 +672,6 @@ export default function App() {
             {session.user.email}
             {myEmployee ? ` • ${myEmployee.name} (${myEmployee.sector} / ${myEmployee.company})` : ""}
             {profile?.is_admin ? " • ADM" : ""}
-            {" • "}
-            Crédito: <b>{brl(myEmployee?.credit_balance || 0)}</b>
           </div>
 
           <button className="btnGhost" onClick={signOut}>Sair</button>
@@ -592,17 +680,32 @@ export default function App() {
         {msg && <p>{msg}</p>}
 
         <div className="grid">
-          {/* ✅ Aviso: compra só no balcão */}
           <div className="card">
-            <h3 className="cardTitle">ℹ️ Compras</h3>
-            <div style={{ opacity: 0.85 }}>
-              As compras são registradas no <b>tablet do balcão</b>.
-              <br />
-              Aqui no app você acompanha seu extrato, gasto do mês e crédito.
+            <h3 className="cardTitle">💳 Crédito</h3>
+            <div style={{ fontSize: 14, opacity: 0.9 }}>
+              Crédito disponível: <b>{brl(myEmployee?.credit_balance || 0)}</b>
             </div>
           </div>
 
-          {/* Card: Meu gasto do mês */}
+          <div className="card">
+            <h3 className="cardTitle">🔐 Seu PIN</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2 }}>
+                {showPin ? (myEmployee?.pin_last4 || "—") : "••••"}
+              </div>
+              <button className="btnGhost" onClick={() => setShowPin((v) => !v)}>
+                {showPin ? "Ocultar" : "Mostrar"}
+              </button>
+              <button className="btnGhost" onClick={sendPinResetLink}>
+                Trocar PIN (via e-mail)
+              </button>
+            </div>
+
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+              Obs: o PIN é usado no balcão para confirmar compras.
+            </div>
+          </div>
+
           <div className="card">
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <h3 className="cardTitle" style={{ marginRight: "auto" }}>
@@ -642,7 +745,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Card: Admin */}
           {profile?.is_admin && (
             <div className="card">
               <h3 className="cardTitle">🛠 Admin</h3>
@@ -653,12 +755,8 @@ export default function App() {
               </div>
 
               <p style={{ opacity: 0.75, marginTop: 10 }}>
-                Export mensal = somente compras do mês atual (do dia 1 até o último dia).
+                Balcão: use a URL com <b>?kiosk=1</b> (tablet). Compras exigem PIN.
               </p>
-
-              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-                URL do balcão: adicione <b>?kiosk=1</b> no final do site.
-              </div>
             </div>
           )}
         </div>
