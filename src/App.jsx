@@ -363,6 +363,12 @@ export default function App() {
   const [pin2, setPin2] = useState("");
   const [pinVisible, setPinVisible] = useState(false);
 
+
+// PIN (tela usuário / mostrar-validar)
+const [pinViewMode, setPinViewMode] = useState("hidden"); 
+// "hidden" | "shown"
+
+
   // PIN (tela usuário - mostrar/validar)
 const [showPin, setShowPin] = useState(false);
 
