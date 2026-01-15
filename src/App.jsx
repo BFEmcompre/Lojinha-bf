@@ -2,9 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import "./App.css";
 
-/** =========================================================
- *  Utils / constants
- *  ========================================================= */
 let audioCh = null;
 
 async function getAudioChannel() {
@@ -14,6 +11,7 @@ async function getAudioChannel() {
     config: { broadcast: { self: false } },
   });
 
+  // garante SUBSCRIBED
   await new Promise((resolve) => {
     audioCh.subscribe((status) => {
       if (status === "SUBSCRIBED") resolve();
@@ -30,10 +28,7 @@ const PRICES = {
 };
 
 function brl(n) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(n || 0));
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(n || 0));
 }
 
 function formatItem(item) {
@@ -47,7 +42,6 @@ function formatItem(item) {
   }
 }
 
-// mês atual: [primeiro dia do mês, primeiro dia do próximo mês)
 function monthRangeISO(d = new Date()) {
   const start = new Date(d.getFullYear(), d.getMonth(), 1);
   const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
@@ -62,8 +56,7 @@ function downloadCSV(filename, rows) {
       r
         .map((v) => {
           const s = String(v ?? "");
-          if (s.includes(SEP) || s.includes('"') || s.includes("\n"))
-            return `"${s.replaceAll('"', '""')}"`;
+          if (s.includes(SEP) || s.includes('"') || s.includes("\n")) return `"${s.replaceAll('"', '""')}"`;
           return s;
         })
         .join(SEP)
@@ -79,126 +72,237 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-/** =========================================================
- *  Kiosk (modo balcão)
- *  ========================================================= */
-function Kiosk() {
-  const [enabled, setEnabled] = useState(false);
-  const [lastMsg, setLastMsg] = useState("");
+/* =========================
+   MODO BALCÃO (POS)
+========================= */
+function KioskPOS() {
+  // precisa estar logado (tablet com conta ADM fixa)
+  const [session, setSession] = useState(null);
+  const [msg, setMsg] = useState("");
+
+  const [employees, setEmployees] = useState([]);
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState(null);
+
+  const [item, setItem] = useState("DOCE_SALGADINHO");
+  const [qty, setQty] = useState(1);
+
+  const totalNow = useMemo(() => Number(PRICES[item] || 0) * Math.max(1, Number(qty || 1)), [item, qty]);
 
   useEffect(() => {
-    const ch = supabase.channel("lojinha-audio", {
-      config: { broadcast: { self: false } },
-    });
-
-    ch.on("broadcast", { event: "purchase_registered" }, ({ payload }) => {
-      setLastMsg(
-        `${payload?.name || "Alguém"} registrou: ${payload?.item || ""} (${
-          payload?.company || ""
-        })`
-      );
-
-      try {
-        const audio = new Audio("/confirm.mp3");
-        audio.volume = 1.0;
-        audio.play().catch(() => {});
-      } catch {}
-    });
-
-    ch.subscribe((status) => console.log("Kiosk channel status:", status));
-
-    return () => {
-      supabase.removeChannel(ch);
-    };
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null));
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  function enableAudio() {
-    setEnabled(true);
-    const audio = new Audio("/confirm.mp3");
-    audio.volume = 0.01;
-    audio.play().then(() => audio.pause()).catch(() => {});
+  async function signOut() {
+    await supabase.auth.signOut();
+    window.location.reload();
+  }
+
+  async function loadEmployees() {
+    setMsg("");
+    const { data, error } = await supabase
+      .from("employees")
+      .select("id,user_id,name,sector,company,credit_balance,active")
+      .eq("active", true)
+      .order("name", { ascending: true });
+
+    if (error) return setMsg(error.message);
+    setEmployees(data ?? []);
+  }
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    loadEmployees();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return employees.slice(0, 30);
+    return employees
+      .filter((e) => {
+        const hay = `${e.name} ${e.sector} ${e.company}`.toLowerCase();
+        return hay.includes(s);
+      })
+      .slice(0, 30);
+  }, [q, employees]);
+
+  async function confirmKioskPurchase() {
+    setMsg("");
+    if (!selected?.user_id) return setMsg("Selecione uma pessoa.");
+    const safeQty = Math.max(1, Number(qty || 1));
+
+    // registra compra no banco via RPC (admin-only)
+    const { error } = await supabase.rpc("kiosk_add_purchase", {
+      p_user: selected.user_id,
+      p_item: item,
+      p_qty: safeQty,
+    });
+
+    if (error) return setMsg(error.message);
+
+    // aviso sonoro do balcão (opcional: no seu celular do balcão mesmo)
+    try {
+      const audio = new Audio("/confirm.mp3");
+      audio.volume = 1.0;
+      audio.play().catch(() => {});
+    } catch {}
+
+    // broadcast para modo balcão/alto-falante (se você quiser manter um segundo device só pro som)
+    try {
+      const ch = await getAudioChannel();
+      await ch.send({
+        type: "broadcast",
+        event: "purchase_registered",
+        payload: {
+          name: selected?.name || "Alguém",
+          sector: selected?.sector || "",
+          company: selected?.company || "",
+          item: formatItem(item),
+          qty: safeQty,
+          total: Number(PRICES[item]) * safeQty,
+        },
+      });
+    } catch {}
+
+    setQty(1);
+    setMsg(`Compra registrada ✅ (${selected.name} • ${formatItem(item)} x${safeQty} • ${brl(totalNow)})`);
+  }
+
+  // Se não tem sessão, reaproveita sua tela normal de login do app (magic link)
+  if (!session) {
+    return (
+      <div className="page">
+        <div className="authCard" style={{ textAlign: "center" }}>
+          <div className="brandTitle">🧾 Modo Balcão</div>
+          <div className="brandSubtitle">Faça login (conta ADM) para registrar compras no balcão</div>
+          <div className="divider" />
+          <div style={{ opacity: 0.8, fontSize: 13 }}>
+            Abra o app normal e faça login. Depois volte aqui.
+            <br />
+            (ou deixe o tablet sempre logado)
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="page">
-      <div className="authCard" style={{ textAlign: "center" }}>
-        <div className="brandTitle">🔊 Modo Balcão</div>
-        <div className="brandSubtitle">
-          Este aparelho avisa quando alguém registra uma compra
+    <div className="shell">
+      <div className="container">
+        <div className="topbar">
+          <h2 style={{ marginRight: "auto" }}>🧾 Lojinha BF — Balcão</h2>
+          <div className="badge">{session.user.email} • KIOSK</div>
+          <button className="btnGhost" onClick={signOut}>Sair</button>
         </div>
 
-        <div className="divider" />
+        {msg && <div className="msg" style={{ marginBottom: 10 }}>{msg}</div>}
 
-        {!enabled ? (
-          <button className="btnPrimary" onClick={enableAudio}>
-            Ativar som
-          </button>
-        ) : (
-          <div style={{ fontSize: 14, opacity: 0.9 }}>
-            ✅ Som ativado. Deixe esta tela aberta.
+        <div className="grid">
+          <div className="card">
+            <h3 className="cardTitle">👤 Selecionar pessoa</h3>
+
+            <label className="label">Buscar (nome / setor / empresa)</label>
+            <input
+              className="input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Ex: Gabriel, Logística, FA..."
+            />
+
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              {filtered.map((e) => (
+                <button
+                  key={e.user_id}
+                  className="btnGhost"
+                  onClick={() => setSelected(e)}
+                  style={{
+                    textAlign: "left",
+                    border: selected?.user_id === e.user_id ? "1px solid rgba(255,255,255,0.35)" : undefined,
+                  }}
+                >
+                  <div style={{ fontWeight: 700 }}>{e.name}</div>
+                  <div style={{ fontSize: 12, opacity: 0.85 }}>
+                    {e.sector} • {e.company} • Crédito: <b>{brl(e.credit_balance || 0)}</b>
+                  </div>
+                </button>
+              ))}
+              {filtered.length === 0 && <div style={{ opacity: 0.7 }}>Nenhum resultado.</div>}
+            </div>
           </div>
-        )}
 
-        <div style={{ marginTop: 16, fontSize: 13, opacity: 0.8 }}>
-          Último aviso: {lastMsg || "—"}
+          <div className="card">
+            <h3 className="cardTitle">🛒 Registrar compra</h3>
+
+            <div style={{ opacity: 0.85, marginBottom: 10 }}>
+              Selecionado:{" "}
+              <b>{selected ? `${selected.name} (${selected.sector} / ${selected.company})` : "—"}</b>
+            </div>
+
+            <div className="purchaseGrid">
+              <label style={{ display: "grid", gap: 6 }}>
+                <span>Item</span>
+                <select value={item} onChange={(e) => setItem(e.target.value)}>
+                  <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
+                  <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
+                  <option value="RED_BULL">Red Bull (R$ 7,00)</option>
+                </select>
+              </label>
+
+              <label style={{ display: "grid", gap: 6 }}>
+                <span>Qtd</span>
+                <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
+              </label>
+
+              <label style={{ display: "grid", gap: 6 }}>
+                <span>Total</span>
+                <input value={brl(totalNow)} disabled />
+              </label>
+            </div>
+
+            <button className="btnPrimary" onClick={confirmKioskPurchase} style={{ marginTop: 12 }}>
+              Confirmar compra
+            </button>
+
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+              Dica: deixe este tablet em tela cheia com a URL <b>?kiosk=1</b>.
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/** =========================================================
- *  Main App
- *  ========================================================= */
+/* =========================
+   APP NORMAL (somente extrato)
+========================= */
 export default function App() {
-  const isKiosk = new URLSearchParams(window.location.search).get("kiosk") === "1";
-  if (isKiosk) return <Kiosk />;
+  const params = new URLSearchParams(window.location.search);
+  const isKiosk = params.get("kiosk") === "1";
+  if (isKiosk) return <KioskPOS />;
 
-  // auth
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState("");
 
-  // profile / employee
   const [profile, setProfile] = useState(null);
   const [myEmployee, setMyEmployee] = useState(null);
 
-  // onboarding
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [fullName, setFullName] = useState("");
   const [sector, setSector] = useState("");
   const [company, setCompany] = useState("");
 
-  // compras
-  const [item, setItem] = useState("DOCE_SALGADINHO");
-  const [qty, setQty] = useState(1);
   const [myPurchases, setMyPurchases] = useState([]);
 
-  const totalNow = useMemo(
-    () => Number(PRICES[item] || 0) * Math.max(1, Number(qty || 1)),
-    [item, qty]
-  );
-  const monthSum = useMemo(
-    () => myPurchases.reduce((acc, p) => acc + Number(p.total || 0), 0),
-    [myPurchases]
-  );
+  const monthSum = useMemo(() => myPurchases.reduce((acc, p) => acc + (p.total || 0), 0), [myPurchases]);
 
-  /** ----------------- Admin: crédito (UI) ----------------- */
-  const [showCredit, setShowCredit] = useState(false);
-  const [userQuery, setUserQuery] = useState("");
-  const [users, setUsers] = useState([]); // employees list (for search)
-  const [selectedUser, setSelectedUser] = useState(null); // {user_id, name, sector, company}
-  const [creditValue, setCreditValue] = useState("");
-  const [note, setNote] = useState("");
-
-  /** =========================================================
-   *  Auth listener
-   *  ========================================================= */
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) =>
-      setSession(s ?? null)
-    );
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null));
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -234,7 +338,6 @@ export default function App() {
       .select("id, name, sector, company, credit_balance, active")
       .eq("user_id", userId)
       .maybeSingle();
-
     if (error) throw error;
     setMyEmployee(data ?? null);
     return data ?? null;
@@ -252,11 +355,7 @@ export default function App() {
 
     const prof = await loadProfile();
     if (!prof.employee_id) {
-      await supabase
-        .from("profiles")
-        .update({ employee_id: emp.id })
-        .eq("user_id", userId);
-
+      await supabase.from("profiles").update({ employee_id: emp.id }).eq("user_id", userId);
       const updated = await loadProfile();
       setProfile(updated);
     }
@@ -267,175 +366,26 @@ export default function App() {
     const { start, end } = monthRangeISO(new Date());
     const { data, error } = await supabase
       .from("purchases")
-      .select("id, user_id, item, unit_price, qty, total, created_at")
+      .select("id, item, qty, total, created_at")
       .gte("created_at", start)
       .lt("created_at", end)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
     setMyPurchases(data ?? []);
-
-    // atualiza saldo do usuário (pra refletir na tela)
-    const userId = session?.user?.id;
-    if (userId) await loadMyEmployeeByUser(userId);
   }
 
-  /** =========================================================
-   *  Compra: debita crédito automaticamente
-   *  ========================================================= */
-  async function addPurchase() {
-    setMsg("");
-
-    const { data: s } = await supabase.auth.getSession();
-    const userId = s?.session?.user?.id;
-    if (!userId) return setMsg("Sessão expirada. Faça login novamente.");
-
-    // pega saldo atual do usuário (pra debitar certo)
-    const { data: emp, error: empErr } = await supabase
-      .from("employees")
-      .select("credit_balance,name,sector,company")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (empErr) return setMsg(empErr.message);
-
-    const creditBal = Number(emp?.credit_balance || 0);
-    const total = Number(totalNow);
-
-    // usa crédito até o limite
-    const creditUsed = Math.min(creditBal, total);
-    const remainingToPay = Number((total - creditUsed).toFixed(2));
-    const newBalance = Number((creditBal - creditUsed).toFixed(2));
-
-    // 1) registra a compra normalmente
-    const payload = {
-      user_id: userId,
-      item,
-      unit_price: Number(PRICES[item]),
-      qty: Math.max(1, Number(qty || 1)),
-      total: total,
-    };
-
-    const { error: insErr } = await supabase.from("purchases").insert([payload]);
-    if (insErr) return setMsg(insErr.message);
-
-    // 2) debita o saldo de crédito (se tiver usado)
-    if (creditUsed > 0) {
-      const { error: upErr } = await supabase
-        .from("employees")
-        .update({ credit_balance: newBalance })
-        .eq("user_id", userId);
-      if (upErr) return setMsg(upErr.message);
-    }
-
-    // mensagem (SEM "restante")
-    if (creditUsed > 0) {
-      setMsg(
-        `Compra registrada ✅  Total ${brl(total)} | Crédito usado ${brl(
-          creditUsed
-        )} | A pagar ${brl(remainingToPay)}`
-      );
-    } else {
-      setMsg(`Compra registrada ✅  Total ${brl(total)}`);
-    }
-
-    // 3) som local (opcional)
-    try {
-      const audio = new Audio("/confirm.mp3");
-      audio.volume = 1;
-      audio.play().catch(() => {});
-    } catch {}
-
-    // 4) aviso pro balcão
-    try {
-      const ch = await getAudioChannel();
-      await ch.send({
-        type: "broadcast",
-        event: "purchase_registered",
-        payload: {
-          name: emp?.name || s.session.user.email,
-          sector: emp?.sector || "",
-          company: emp?.company || "",
-          item: formatItem(item),
-          qty: Math.max(1, Number(qty || 1)),
-          total: total,
-        },
-      });
-    } catch {}
-
-    setQty(1);
-    await loadMyPurchasesThisMonth();
-  }
-
-  /** =========================================================
-   *  Admin: carregar lista de pessoas para busca
-   *  ========================================================= */
-  async function adminLoadUsersForCredit() {
-    const { data, error } = await supabase
-      .from("employees")
-      .select("user_id,name,sector,company,active")
-      .eq("active", true)
-      .order("name", { ascending: true });
-
-    if (error) throw error;
-    setUsers(data ?? []);
-  }
-
-  /** =========================================================
-   *  Admin: lançar crédito via RPC
-   *  ========================================================= */
-  async function adminAddCredit() {
-    setMsg("");
-
-    if (!selectedUser?.user_id) {
-      setMsg("Selecione uma pessoa.");
-      return;
-    }
-
-    const val = Number(String(creditValue).replace(",", "."));
-    if (!val || val <= 0) {
-      setMsg("Informe um valor válido (maior que zero).");
-      return;
-    }
-
-    const { error } = await supabase.rpc("admin_add_credit", {
-      p_user: selectedUser.user_id,
-      p_amount: val,
-      p_note: note?.trim() || null,
-    });
-
-    if (error) {
-      setMsg(error.message);
-      return;
-    }
-
-    setMsg("Crédito lançado com sucesso ✅");
-    setCreditValue("");
-    setNote("");
-    setSelectedUser(null);
-    setUserQuery("");
-    setShowCredit(false);
-
-    // atualiza meu saldo se eu for o mesmo usuário
-    const myId = session?.user?.id;
-    if (myId) await loadMyEmployeeByUser(myId);
-  }
-
-  /** =========================================================
-   *  Export mensal (compras + resumo + credit_ledger)
-   *  ========================================================= */
+  // EXPORT ADMIN (o seu atual)
   async function exportCSV(companyFilter) {
     setMsg("");
 
     const { data: s } = await supabase.auth.getSession();
     if (!s?.session) return alert("Sessão expirada.");
 
-    // mês atual
-    const { start, end } = monthRangeISO(new Date());
-
-    // employees
     const { data: emps, error: e1 } = await supabase
       .from("employees")
-      .select("user_id,name,sector,company,active,credit_balance");
+      .select("user_id,name,sector,company,active");
+
     if (e1) return alert("Erro employees: " + e1.message);
 
     const empMap = new Map(
@@ -444,16 +394,17 @@ export default function App() {
         .map((x) => [x.user_id, x])
     );
 
-    // purchases do mês
+    const { start, end } = monthRangeISO(new Date());
     const { data: pur, error: e2 } = await supabase
       .from("purchases")
       .select("created_at,user_id,item,unit_price,qty,total")
       .gte("created_at", start)
       .lt("created_at", end)
       .order("created_at", { ascending: false });
+
     if (e2) return alert("Erro purchases: " + e2.message);
 
-    const purchasesRowsObj = (pur || []).map((p) => {
+    const rowsObj = (pur || []).map((p) => {
       const emp = empMap.get(p.user_id);
       return {
         data: new Date(p.created_at).toLocaleString("pt-BR"),
@@ -468,13 +419,11 @@ export default function App() {
       };
     });
 
-    const filteredPurchases = companyFilter
-      ? purchasesRowsObj.filter((r) => r.empresa === companyFilter)
-      : purchasesRowsObj;
+    const filtered = companyFilter ? rowsObj.filter((r) => r.empresa === companyFilter) : rowsObj;
 
-    // resumo por usuário (total de compras do mês)
+    // resumo por usuário
     const summaryMap = new Map();
-    for (const r of filteredPurchases) {
+    for (const r of filtered) {
       const key = `${r.user_id}__${r.nome}__${r.setor}__${r.empresa}`;
       const prev = summaryMap.get(key) || 0;
       summaryMap.set(key, prev + Number(r.total || 0));
@@ -486,87 +435,30 @@ export default function App() {
     });
     summaryRows.sort((a, b) => b.total_mes - a.total_mes);
 
-    // credit_ledger do mês
-    const { data: credits, error: e3 } = await supabase
-      .from("credit_ledger")
-      .select("created_at,user_id,amount,note")
-      .gte("created_at", start)
-      .lt("created_at", end)
-      .order("created_at", { ascending: false });
-    if (e3) return alert("Erro credit_ledger: " + e3.message);
-
-    const creditRowsObj = (credits || []).map((c) => {
-      const emp = empMap.get(c.user_id);
-      return {
-        data: new Date(c.created_at).toLocaleString("pt-BR"),
-        empresa: emp?.company ?? "",
-        nome: emp?.name ?? "",
-        setor: emp?.sector ?? "",
-        valor: Number(c.amount || 0),
-        nota: c.note ?? "",
-        user_id: c.user_id,
-      };
-    });
-
-    const filteredCredits = companyFilter
-      ? creditRowsObj.filter((r) => r.empresa === companyFilter)
-      : creditRowsObj;
-
     const rows = [
-      ["DETALHADO (COMPRAS DO MÊS)"],
+      ["DETALHADO"],
       ["Data", "Empresa", "Nome", "Setor", "Item", "Qtd", "Preço Unit", "Total", "UserId"],
-      ...filteredPurchases.map((r) => [
-        r.data,
-        r.empresa,
-        r.nome,
-        r.setor,
-        r.item,
-        r.qtd,
-        brl(r.unit_price),
-        brl(r.total),
-        r.user_id,
-      ]),
-
+      ...filtered.map((r) => [r.data, r.empresa, r.nome, r.setor, r.item, r.qtd, r.unit_price, r.total, r.user_id]),
       [],
-      ["RESUMO POR USUÁRIO (TOTAL DE COMPRAS NO MÊS)"],
+      ["RESUMO POR USUÁRIO (TOTAL DO MÊS)"],
       ["Empresa", "Nome", "Setor", "Total do mês", "UserId"],
-      ...summaryRows.map((srow) => [
-        srow.empresa,
-        srow.nome,
-        srow.setor,
-        brl(srow.total_mes),
-        srow.user_id,
-      ]),
-
-      [],
-      ["CRÉDITOS (LANÇAMENTOS DO MÊS)"],
-      ["Data", "Empresa", "Nome", "Setor", "Valor", "Nota", "UserId"],
-      ...filteredCredits.map((c) => [
-        c.data,
-        c.empresa,
-        c.nome,
-        c.setor,
-        brl(c.valor),
-        c.nota,
-        c.user_id,
+      ...summaryRows.map((s) => [
+        s.empresa,
+        s.nome,
+        s.setor,
+        Number(s.total_mes || 0).toFixed(2).replace(".", ","),
+        s.user_id,
       ]),
     ];
 
-    downloadCSV(
-      `lojinha_${companyFilter || "GERAL"}_${new Date().toISOString().slice(0, 7)}.csv`,
-      rows
-    );
+    downloadCSV(`lojinha_${companyFilter || "GERAL"}_${new Date().toISOString().slice(0, 7)}.csv`, rows);
   }
 
-  /** =========================================================
-   *  Effects: ao logar
-   *  ========================================================= */
   useEffect(() => {
     if (!session?.user?.id) return;
     (async () => {
       try {
         setMsg("");
-        await loadProfile();
         await ensureOnboarding();
       } catch (e) {
         setMsg(e.message ?? String(e));
@@ -588,23 +480,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsOnboarding, session?.user?.id]);
 
-  // quando abrir modal de crédito, carrega pessoas
-  useEffect(() => {
-    if (!profile?.is_admin) return;
-    if (!showCredit) return;
-    (async () => {
-      try {
-        await adminLoadUsersForCredit();
-      } catch (e) {
-        setMsg(e.message ?? String(e));
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showCredit, profile?.is_admin]);
-
-  /** =========================================================
-   *  UI: Auth / onboarding / app
-   *  ========================================================= */
   if (!session) {
     return (
       <div className="page">
@@ -627,11 +502,7 @@ export default function App() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="seuemail@emcompre.com.br"
             />
-
-            <button className="btnPrimary" type="submit">
-              Enviar link
-            </button>
-
+            <button className="btnPrimary" type="submit">Enviar link</button>
             {msg && <div className="msg">{msg}</div>}
           </form>
         </div>
@@ -646,40 +517,22 @@ export default function App() {
           <div className="topRow">
             <div>
               <div className="brandTitle">Complete seu cadastro</div>
-              <div className="brandSubtitle">
-                Primeiro acesso. Preencha nome, setor e empresa para liberar o uso da lojinha.
-              </div>
+              <div className="brandSubtitle">Primeiro acesso. Preencha nome, setor e empresa.</div>
             </div>
-            <button className="btnGhost" onClick={signOut}>
-              Sair
-            </button>
+            <button className="btnGhost" onClick={signOut}>Sair</button>
           </div>
 
           <div className="divider" />
 
           <div className="form">
             <label className="label">Nome completo</label>
-            <input
-              className="input"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Seu nome completo"
-            />
+            <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome completo" />
 
             <label className="label">Setor</label>
-            <input
-              className="input"
-              value={sector}
-              onChange={(e) => setSector(e.target.value)}
-              placeholder="Seu setor"
-            />
+            <input className="input" value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Seu setor" />
 
             <label className="label">Empresa</label>
-            <select
-              className="input"
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-            >
+            <select className="input" value={company} onChange={(e) => setCompany(e.target.value)}>
               <option value="">Selecione...</option>
               <option value="FA">F.A</option>
               <option value="BF">BF Colchões</option>
@@ -689,31 +542,19 @@ export default function App() {
               className="btnPrimary"
               onClick={async () => {
                 setMsg("");
-                if (!fullName.trim() || !sector.trim() || !company)
-                  return setMsg("Preencha nome, setor e empresa.");
+                if (!fullName.trim() || !sector.trim() || !company) return setMsg("Preencha nome, setor e empresa.");
 
                 const userId = session.user.id;
 
                 const { data, error } = await supabase
                   .from("employees")
-                  .insert([
-                    {
-                      user_id: userId,
-                      name: fullName.trim(),
-                      sector: sector.trim(),
-                      company,
-                      active: true,
-                    },
-                  ])
+                  .insert([{ user_id: userId, name: fullName.trim(), sector: sector.trim(), company, active: true }])
                   .select("id")
                   .single();
 
                 if (error) return setMsg(error.message);
 
-                const { error: e2 } = await supabase
-                  .from("profiles")
-                  .update({ employee_id: data.id })
-                  .eq("user_id", userId);
+                const { error: e2 } = await supabase.from("profiles").update({ employee_id: data.id }).eq("user_id", userId);
                 if (e2) return setMsg(e2.message);
 
                 setNeedsOnboarding(false);
@@ -731,14 +572,6 @@ export default function App() {
     );
   }
 
-  // Busca (filtro do autocomplete)
-  const filteredUsers = users.filter((u) => {
-    const q = userQuery.trim().toLowerCase();
-    if (!q) return true;
-    const hay = `${u.name || ""} ${u.sector || ""} ${u.company || ""}`.toLowerCase();
-    return hay.includes(q);
-  });
-
   return (
     <div className="shell">
       <div className="container">
@@ -747,57 +580,26 @@ export default function App() {
 
           <div className="badge">
             {session.user.email}
-            {myEmployee
-              ? ` • ${myEmployee.name} (${myEmployee.sector}${
-                  myEmployee.company ? ` / ${myEmployee.company}` : ""
-                })`
-              : ""}
+            {myEmployee ? ` • ${myEmployee.name} (${myEmployee.sector} / ${myEmployee.company})` : ""}
             {profile?.is_admin ? " • ADM" : ""}
             {" • "}
-            Crédito disponível: <b>{brl(myEmployee?.credit_balance || 0)}</b>
+            Crédito: <b>{brl(myEmployee?.credit_balance || 0)}</b>
           </div>
 
-          <button className="btnGhost" onClick={signOut}>
-            Sair
-          </button>
+          <button className="btnGhost" onClick={signOut}>Sair</button>
         </div>
 
-        {msg && <div className="msg">{msg}</div>}
+        {msg && <p>{msg}</p>}
 
         <div className="grid">
-          {/* Card: Lançar compra */}
+          {/* ✅ Aviso: compra só no balcão */}
           <div className="card">
-            <h3 className="cardTitle">🧾 Lançar compra</h3>
-
-            <div className="purchaseGrid">
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Item</span>
-                <select value={item} onChange={(e) => setItem(e.target.value)}>
-                  <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
-                  <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
-                  <option value="RED_BULL">Red Bull (R$ 7,00)</option>
-                </select>
-              </label>
-
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Qtd</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={qty}
-                  onChange={(e) => setQty(e.target.value)}
-                />
-              </label>
-
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Total</span>
-                <input value={brl(totalNow)} disabled />
-              </label>
+            <h3 className="cardTitle">ℹ️ Compras</h3>
+            <div style={{ opacity: 0.85 }}>
+              As compras são registradas no <b>tablet do balcão</b>.
+              <br />
+              Aqui no app você acompanha seu extrato, gasto do mês e crédito.
             </div>
-
-            <button onClick={addPurchase} style={{ marginTop: 12 }}>
-              Confirmar
-            </button>
           </div>
 
           {/* Card: Meu gasto do mês */}
@@ -844,129 +646,23 @@ export default function App() {
           {profile?.is_admin && (
             <div className="card">
               <h3 className="cardTitle">🛠 Admin</h3>
-
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button onClick={() => exportCSV("FA")}>Exportar CSV F.A (mês)</button>
                 <button onClick={() => exportCSV("BF")}>Exportar CSV BF (mês)</button>
                 <button onClick={() => exportCSV("")}>Exportar CSV Geral (mês)</button>
-                <button onClick={() => setShowCredit(true)}>Lançar crédito</button>
               </div>
 
               <p style={{ opacity: 0.75, marginTop: 10 }}>
-                Export traz: compras do mês (detalhado), resumo por usuário e lançamentos de crédito do mês.
+                Export mensal = somente compras do mês atual (do dia 1 até o último dia).
               </p>
+
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+                URL do balcão: adicione <b>?kiosk=1</b> no final do site.
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {/* Modal: Lançar crédito */}
-      {profile?.is_admin && showCredit && (
-        <div
-          onClick={() => setShowCredit(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9999,
-          }}
-        >
-          <div
-            className="authCard"
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: "100%", maxWidth: 560 }}
-          >
-            <div className="topRow">
-              <div>
-                <div className="brandTitle">Lançar crédito</div>
-                <div className="brandSubtitle">
-                  Busque uma pessoa, informe o valor e (opcional) uma observação.
-                </div>
-              </div>
-              <button className="btnGhost" onClick={() => setShowCredit(false)}>
-                Fechar
-              </button>
-            </div>
-
-            <div className="divider" />
-
-            <div className="form">
-              <label className="label">Buscar pessoa</label>
-              <input
-                className="input"
-                value={userQuery}
-                onChange={(e) => {
-                  setUserQuery(e.target.value);
-                  setSelectedUser(null);
-                }}
-                placeholder="Digite nome, setor ou empresa..."
-              />
-
-              <div
-                style={{
-                  maxHeight: 180,
-                  overflow: "auto",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 10,
-                }}
-              >
-                {filteredUsers.slice(0, 20).map((u) => (
-                  <div
-                    key={u.user_id}
-                    onClick={() => {
-                      setSelectedUser(u);
-                      setUserQuery(`${u.name} • ${u.sector} • ${u.company}`);
-                    }}
-                    style={{
-                      padding: "10px 12px",
-                      cursor: "pointer",
-                      borderTop: "1px solid rgba(255,255,255,0.06)",
-                      opacity:
-                        selectedUser?.user_id === u.user_id ? 1 : 0.92,
-                    }}
-                  >
-                    <b>{u.name}</b>{" "}
-                    <span style={{ opacity: 0.8 }}>
-                      — {u.sector} ({u.company})
-                    </span>
-                  </div>
-                ))}
-                {filteredUsers.length === 0 && (
-                  <div style={{ padding: 12, opacity: 0.8 }}>
-                    Nenhum usuário encontrado.
-                  </div>
-                )}
-              </div>
-
-              <label className="label" style={{ marginTop: 10 }}>
-                Valor do crédito (R$)
-              </label>
-              <input
-                className="input"
-                value={creditValue}
-                onChange={(e) => setCreditValue(e.target.value)}
-                placeholder="Ex: 10,00"
-              />
-
-              <label className="label">Observação (opcional)</label>
-              <input
-                className="input"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Ex: troco, ajuste, pagamento parcial..."
-              />
-
-              <button className="btnPrimary" onClick={adminAddCredit}>
-                Confirmar lançamento
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
