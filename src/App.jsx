@@ -364,9 +364,8 @@ export default function App() {
   const [pinVisible, setPinVisible] = useState(false);
 
   // PIN (tela usuário - mostrar/validar)
-  const [pinViewMode, setPinViewMode] = useState(false);
-  const [pinCheck, setPinCheck] = useState("");
-  const [pinOk, setPinOk] = useState(false);
+const [showPin, setShowPin] = useState(false);
+
 
   // extrato (usuário)
   const [myPurchases, setMyPurchases] = useState([]);
@@ -937,36 +936,33 @@ export default function App() {
         </div>
 
         {/* PIN (mostrar/alterar) */}
-        <div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
-          PIN: <b>{pinOk ? pinCheck : "••••"}</b>{" "}
-          <button
-            className="btnGhost"
-            type="button"
-            onClick={() => {
-              setPinViewMode((v) => !v);
-              setPinCheck("");
-              setPinOk(false);
-            }}
-            style={{ marginLeft: 6 }}
-          >
-            {pinViewMode ? "Fechar" : "Ver PIN"}
-          </button>{" "}
-          <button
-            className="btnGhost"
-            type="button"
-            onClick={async () => {
-              setMsg("");
-              const { error } = await supabase.auth.signInWithOtp({
-                email: session.user.email,
-                options: { emailRedirectTo: window.location.origin + "/?change_pin=1" },
-              });
-              if (error) return setMsg(error.message);
-              setMsg("Enviamos um link para alterar seu PIN no seu e-mail 📩");
-            }}
-          >
-            Alterar PIN (via e-mail)
-          </button>
-        </div>
+<div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
+  PIN: <b>{showPin ? "****" : "••••"}</b>{" "}
+  <button
+    className="btnGhost"
+    type="button"
+    onClick={() => setShowPin((v) => !v)}
+    style={{ marginLeft: 6 }}
+  >
+    {showPin ? "Ocultar PIN" : "Mostrar PIN"}
+  </button>{" "}
+  <button
+    className="btnGhost"
+    type="button"
+    onClick={async () => {
+      setMsg("");
+      const { error } = await supabase.auth.signInWithOtp({
+        email: session.user.email,
+        options: { emailRedirectTo: window.location.origin + "/?change_pin=1" },
+      });
+      if (error) return setMsg(error.message);
+      setMsg("Enviamos um link para alterar seu PIN no seu e-mail 📩");
+    }}
+  >
+    Alterar PIN (via e-mail)
+  </button>
+</div>
+
 
         {pinViewMode && (
           <div style={{ marginTop: 8 }}>
