@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import "./App.css";
-import ExcelJS from "exceljs";
+import ExcelJS from "exceljs/dist/exceljs.min.js";
 
 const PRICES = {
   DOCE_SALGADINHO: 2,
@@ -53,7 +53,7 @@ async function downloadBufferAsFile(buffer, filename) {
 function styleHeader(row) {
   row.font = { bold: true, color: { argb: "FFFFFFFF" } };
   row.alignment = { vertical: "middle", horizontal: "center" };
-  row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E79" } }; // azul escuro
+  row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E79" } };
   row.height = 20;
   row.eachCell((cell) => {
     cell.border = {
@@ -80,7 +80,7 @@ function styleTableRows(ws, startRow = 2) {
   }
 }
 
-function autoFitColumns(ws, maxWidth = 45) {
+function autoFitColumns(ws, maxWidth = 60) {
   ws.columns.forEach((col) => {
     let maxLen = 10;
     col.eachCell({ includeEmpty: true }, (cell) => {
@@ -92,7 +92,202 @@ function autoFitColumns(ws, maxWidth = 45) {
   });
 }
 
+/**
+ * ✅ KIOSK TABLET (COMPRA)
+ * URL: /?kiosk=1
+ */
+function KioskPurchase() {
+  const [msg, setMsg] = useState("");
+  const [company, setCompany] = useState("FA");
+  const [query, setQuery] = useState("");
+  const [employees, setEmployees] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
+
+  const [item, setItem] = useState("DOCE_SALGADINHO");
+  const [qty, setQty] = useState(1);
+
+  const [pin, setPin] = useState("");
+  const [pinVisible, setPinVisible] = useState(false);
+
+  const totalNow = useMemo(
+    () => Number(PRICES[item] || 0) * Math.max(1, Number(qty || 1)),
+    [item, qty]
+  );
+
+  async function loadEmployees() {
+    setMsg("");
+    const { data, error } = await supabase
+      .from("employees")
+      .select("user_id,name,sector,company,active")
+      .eq("active", true)
+      .order("name", { ascending: true });
+
+    if (error) return setMsg(error.message);
+    setEmployees(data ?? []);
+  }
+
+  useEffect(() => {
+    loadEmployees();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (employees || [])
+      .filter((e) => e.company === company)
+      .filter((e) => {
+        if (!q) return true;
+        return `${e.name} ${e.sector}`.toLowerCase().includes(q);
+      })
+      .slice(0, 200);
+  }, [employees, company, query]);
+
+  async function confirmPurchase() {
+    setMsg("");
+
+    if (!selectedUserId) return setMsg("Selecione uma pessoa.");
+    if (!pin || String(pin).length !== 4) return setMsg("Informe o PIN de 4 dígitos.");
+    const q = Math.max(1, Number(qty || 1));
+
+    // 1) verifica PIN (RPC)
+    const { data: ok, error: e1 } = await supabase.rpc("verify_pin", {
+      p_user: selectedUserId,
+      p_pin: String(pin),
+    });
+
+    if (e1) return setMsg(e1.message);
+    if (!ok) return setMsg("PIN incorreto ❌");
+
+    // 2) lança compra (RPC) -> garante user_id correto e respeita regras no banco
+    const { error: e2 } = await supabase.rpc("kiosk_add_purchase", {
+      p_user: selectedUserId,
+      p_item: item,
+      p_qty: q,
+    });
+
+    if (e2) return setMsg(e2.message);
+
+    // 3) broadcast opcional (som em outro device, se você quiser manter)
+    try {
+      const emp = employees.find((x) => x.user_id === selectedUserId);
+      const ch = supabase.channel("lojinha-audio", { config: { broadcast: { self: false } } });
+      ch.subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await ch.send({
+            type: "broadcast",
+            event: "purchase_registered",
+            payload: {
+              name: emp?.name || "Alguém",
+              sector: emp?.sector || "",
+              company: emp?.company || "",
+              item: formatItem(item),
+              qty: q,
+              total: totalNow,
+            },
+          });
+          supabase.removeChannel(ch);
+        }
+      });
+    } catch {}
+
+    setMsg("Compra registrada ✅");
+    setPin("");
+    setQty(1);
+  }
+
+  return (
+    <div className="page">
+      <div className="authCard">
+        <div className="topRow">
+          <div>
+            <div className="brandTitle">🧾 Modo Balcão (Tablet)</div>
+            <div className="brandSubtitle">Selecione a pessoa, informe o PIN e registre a compra</div>
+          </div>
+
+          <button className="btnGhost" onClick={loadEmployees}>Atualizar lista</button>
+        </div>
+
+        <div className="divider" />
+
+        <div className="form">
+          <label className="label">Empresa</label>
+          <select className="input" value={company} onChange={(e) => setCompany(e.target.value)}>
+            <option value="FA">F.A</option>
+            <option value="BF">BF Colchões</option>
+          </select>
+
+          <label className="label" style={{ marginTop: 10 }}>Buscar (nome / setor)</label>
+          <input
+            className="input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Ex: Ana, Financeiro..."
+          />
+
+          <label className="label" style={{ marginTop: 10 }}>Pessoa</label>
+          <select className="input" value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
+            <option value="">Selecione...</option>
+            {filtered.map((e) => (
+              <option key={e.user_id} value={e.user_id}>
+                {e.name} — {e.sector}
+              </option>
+            ))}
+          </select>
+
+          <div className="purchaseGrid" style={{ marginTop: 10 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span>Item</span>
+              <select value={item} onChange={(e) => setItem(e.target.value)}>
+                <option value="DOCE_SALGADINHO">Doce/Salgadinho (R$ 2,00)</option>
+                <option value="CAPSULA_CAFE">Cápsula de Café (R$ 1,50)</option>
+                <option value="RED_BULL">Red Bull (R$ 7,00)</option>
+              </select>
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span>Qtd</span>
+              <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span>Total</span>
+              <input value={brl(totalNow)} disabled />
+            </label>
+          </div>
+
+          <label className="label" style={{ marginTop: 10 }}>PIN (4 dígitos)</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              inputMode="numeric"
+              maxLength={4}
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              type={pinVisible ? "text" : "password"}
+              placeholder="••••"
+            />
+            <button className="btnGhost" type="button" onClick={() => setPinVisible((v) => !v)}>
+              {pinVisible ? "Ocultar" : "Mostrar"}
+            </button>
+          </div>
+
+          <button className="btnPrimary" style={{ marginTop: 12 }} onClick={confirmPurchase}>
+            Confirmar compra
+          </button>
+
+          {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  // ✅ KIOSK de COMPRA no tablet
+  const isKiosk = new URLSearchParams(window.location.search).get("kiosk") === "1";
+  if (isKiosk) return <KioskPurchase />;
+
   // auth
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
@@ -102,15 +297,17 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [myEmployee, setMyEmployee] = useState(null);
 
-  // onboarding (cadastro)
+  // onboarding (cadastro + PIN)
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [fullName, setFullName] = useState("");
   const [sector, setSector] = useState("");
   const [company, setCompany] = useState("");
+  const [pin1, setPin1] = useState("");
+  const [pin2, setPin2] = useState("");
+  const [pinVisible, setPinVisible] = useState(false);
 
-  // compras (usuário)
+  // compras (usuário) - apenas extrato
   const [myPurchases, setMyPurchases] = useState([]);
-
   const monthSum = useMemo(() => myPurchases.reduce((acc, p) => acc + (p.total || 0), 0), [myPurchases]);
 
   // ADMIN: crédito UI
@@ -146,10 +343,7 @@ export default function App() {
   }
 
   async function loadProfile() {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("user_id, employee_id, is_admin")
-      .single();
+    const { data, error } = await supabase.from("profiles").select("user_id, employee_id, is_admin").single();
     if (error) throw error;
     setProfile(data);
     return data;
@@ -183,6 +377,7 @@ export default function App() {
       const updated = await loadProfile();
       setProfile(updated);
     }
+
     setNeedsOnboarding(false);
   }
 
@@ -199,7 +394,7 @@ export default function App() {
     setMyPurchases(data ?? []);
   }
 
-  // ---- ADMIN: carregar lista de colaboradores (pra lançar crédito)
+  // Admin: employees p/ crédito
   async function loadEmployeesForCredit() {
     setMsg("");
     const { data, error } = await supabase
@@ -208,14 +403,10 @@ export default function App() {
       .eq("active", true)
       .order("name", { ascending: true });
 
-    if (error) {
-      setMsg(error.message);
-      return;
-    }
+    if (error) return setMsg(error.message);
     setEmployeesAll(data ?? []);
   }
 
-  // ---- ADMIN: lançar crédito (RPC)
   async function addCreditAdmin() {
     setMsg("");
     if (!selectedUserId) return setMsg("Selecione uma pessoa.");
@@ -235,55 +426,47 @@ export default function App() {
     setCreditNote("");
     setSelectedUserId("");
 
-    // atualiza saldo do próprio user se ele for o mesmo
-    if (session?.user?.id === selectedUserId) {
-      await loadMyEmployeeByUser(session.user.id);
-    }
+    // refresh saldo do usuário logado
+    if (session?.user?.id) await loadMyEmployeeByUser(session.user.id);
+    // refresh list
+    await loadEmployeesForCredit();
   }
 
-  // ---- EXPORT XLSX (Admin)
+  // Export XLSX (com compras + resumo + créditos)
   async function exportXLSX(companyFilter) {
     setMsg("");
 
-    // segurança básica: precisa estar logado
     const { data: s } = await supabase.auth.getSession();
     if (!s?.session) return alert("Sessão expirada.");
 
     const { start, end } = monthRangeISO(new Date());
-    const monthLabel = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const monthLabel = new Date().toISOString().slice(0, 7);
 
-    // 1) employees (inclui saldo)
     const { data: emps, error: e1 } = await supabase
       .from("employees")
       .select("user_id,name,sector,company,credit_balance,active")
       .eq("active", true)
       .order("name", { ascending: true });
-
     if (e1) return alert("Erro employees: " + e1.message);
 
     const empMap = new Map((emps || []).map((x) => [x.user_id, x]));
 
-    // 2) compras do mês
     const { data: pur, error: e2 } = await supabase
       .from("purchases")
       .select("created_at,user_id,item,unit_price,qty,total")
       .gte("created_at", start)
       .lt("created_at", end)
       .order("created_at", { ascending: false });
-
     if (e2) return alert("Erro purchases: " + e2.message);
 
-    // 3) lançamentos de crédito do mês (com obs)
     const { data: credits, error: e3 } = await supabase
       .from("credit_ledger")
       .select("created_at,user_id,amount,note")
       .gte("created_at", start)
       .lt("created_at", end)
       .order("created_at", { ascending: false });
-
     if (e3) return alert("Erro credit_ledger: " + e3.message);
 
-    // normaliza compras
     const detailedRows = (pur || []).map((p) => {
       const emp = empMap.get(p.user_id);
       return {
@@ -299,25 +482,19 @@ export default function App() {
       };
     });
 
-    // filtra por empresa
-    const detailedFiltered = companyFilter
-      ? detailedRows.filter((r) => r.Empresa === companyFilter)
-      : detailedRows;
+    const detailedFiltered = companyFilter ? detailedRows.filter((r) => r.Empresa === companyFilter) : detailedRows;
 
-    // resumo compras por usuário
     const sumMap = new Map();
     for (const r of detailedFiltered) {
       const key = `${r.UserId}__${r.Nome}__${r.Setor}__${r.Empresa}`;
       sumMap.set(key, (sumMap.get(key) || 0) + Number(r.Total || 0));
     }
-
     const summaryRows = Array.from(sumMap.entries()).map(([key, total]) => {
       const [UserId, Nome, Setor, Empresa] = key.split("__");
       return { Empresa, Nome, Setor, "Total do mês": Number(total || 0), UserId };
     });
     summaryRows.sort((a, b) => b["Total do mês"] - a["Total do mês"]);
 
-    // saldos de crédito (visão geral)
     const creditBalances = (emps || [])
       .map((e) => ({
         Empresa: e.company || "",
@@ -328,7 +505,6 @@ export default function App() {
       }))
       .filter((r) => (companyFilter ? r.Empresa === companyFilter : true));
 
-    // lançamentos de crédito (do mês)
     const creditLedgerRows = (credits || [])
       .map((c) => {
         const emp = empMap.get(c.user_id);
@@ -344,25 +520,21 @@ export default function App() {
       })
       .filter((r) => (companyFilter ? r.Empresa === companyFilter : true));
 
-    // monta workbook
     const wb = new ExcelJS.Workbook();
-    wb.creator = "Lojinha BF";
+    wb.creator = "Lojinha";
     wb.created = new Date();
 
-    // === ABA 1: Compras Detalhado
     const ws1 = wb.addWorksheet("Compras (Detalhado)", { views: [{ state: "frozen", ySplit: 1 }] });
-    ws1.addRow(Object.keys(detailedFiltered[0] || {
-      Data: "", Empresa: "", Nome: "", Setor: "", Item: "", Qtd: "", "Preço Unit": "", Total: "", UserId: ""
-    }));
+    ws1.addRow(["Data", "Empresa", "Nome", "Setor", "Item", "Qtd", "Preço Unit", "Total", "UserId"]);
     styleHeader(ws1.getRow(1));
-
-    detailedFiltered.forEach((r) => ws1.addRow(Object.values(r)));
+    detailedFiltered.forEach((r) =>
+      ws1.addRow([r.Data, r.Empresa, r.Nome, r.Setor, r.Item, r.Qtd, r["Preço Unit"], r.Total, r.UserId])
+    );
     ws1.getColumn(7).numFmt = '"R$" #,##0.00';
     ws1.getColumn(8).numFmt = '"R$" #,##0.00';
     styleTableRows(ws1, 2);
     autoFitColumns(ws1);
 
-    // === ABA 2: Resumo
     const ws2 = wb.addWorksheet("Resumo (por pessoa)", { views: [{ state: "frozen", ySplit: 1 }] });
     ws2.addRow(["Empresa", "Nome", "Setor", "Total do mês", "UserId"]);
     styleHeader(ws2.getRow(1));
@@ -371,44 +543,32 @@ export default function App() {
     styleTableRows(ws2, 2);
     autoFitColumns(ws2);
 
-    // === ABA 3: Créditos (Saldos + Lançamentos)
-    const ws3 = wb.addWorksheet("Créditos", { views: [{ state: "frozen", ySplit: 1 }] });
-
-    // seção saldos
+    const ws3 = wb.addWorksheet("Créditos", { views: [{ state: "frozen", ySplit: 2 }] });
     ws3.addRow(["SALDOS (crédito atual)"]);
     ws3.getRow(1).font = { bold: true, size: 14 };
     ws3.addRow(["Empresa", "Nome", "Setor", "Crédito atual", "UserId"]);
     styleHeader(ws3.getRow(2));
     creditBalances.forEach((r) => ws3.addRow([r.Empresa, r.Nome, r.Setor, r["Crédito atual"], r.UserId]));
-    const saldoStartRow = 3;
     ws3.getColumn(4).numFmt = '"R$" #,##0.00';
-
-    // linha em branco
     ws3.addRow([]);
-    const ledgerTitleRow = ws3.rowCount + 1;
 
-    // seção lançamentos
+    const titleRow = ws3.rowCount + 1;
     ws3.addRow(["LANÇAMENTOS DE CRÉDITO (mês)"]);
-    ws3.getRow(ledgerTitleRow).font = { bold: true, size: 14 };
+    ws3.getRow(titleRow).font = { bold: true, size: 14 };
 
     ws3.addRow(["Data", "Empresa", "Nome", "Setor", "Valor", "Observação", "UserId"]);
-    styleHeader(ws3.getRow(ledgerTitleRow + 1));
+    styleHeader(ws3.getRow(titleRow + 1));
 
-    creditLedgerRows.forEach((r) =>
-      ws3.addRow([r.Data, r.Empresa, r.Nome, r.Setor, r.Valor, r.Observação, r.UserId])
-    );
-
-    // estilos colunas de valores e bordas
+    creditLedgerRows.forEach((r) => ws3.addRow([r.Data, r.Empresa, r.Nome, r.Setor, r.Valor, r.Observação, r.UserId]));
     ws3.getColumn(5).numFmt = '"R$" #,##0.00';
     styleTableRows(ws3, 3);
-    autoFitColumns(ws3, 60);
+    autoFitColumns(ws3, 70);
 
-    const fileName = `lojinha_${companyFilter || "GERAL"}_${monthLabel}.xlsx`;
     const buffer = await wb.xlsx.writeBuffer();
-    await downloadBufferAsFile(buffer, fileName);
+    await downloadBufferAsFile(buffer, `lojinha_${companyFilter || "GERAL"}_${monthLabel}.xlsx`);
   }
 
-  // Quando loga: carrega profile e verifica onboarding
+  // load after login
   useEffect(() => {
     if (!session?.user?.id) return;
     (async () => {
@@ -423,13 +583,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
 
-  // Quando onboarding terminar, carregar compras
   useEffect(() => {
     if (!session?.user?.id) return;
     if (needsOnboarding) return;
     (async () => {
       try {
         await loadMyPurchasesThisMonth();
+        await loadMyEmployeeByUser(session.user.id);
       } catch (e) {
         setMsg(e.message ?? String(e));
       }
@@ -437,8 +597,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsOnboarding, session?.user?.id]);
 
-  // --- TELAS ---
-
+  // ---- UI ----
   if (!session) {
     return (
       <div className="page">
@@ -446,8 +605,8 @@ export default function App() {
           <div className="brandRow">
             <img src="/favicon.ico" alt="BF" className="brandLogo" />
             <div>
-              <div className="brandTitle">Lojinha BF</div>
-              <div className="brandSubtitle">Controle interno de compras</div>
+              <div className="brandTitle">Lojinha</div>
+              <div className="brandSubtitle">Controle interno</div>
             </div>
           </div>
 
@@ -455,12 +614,7 @@ export default function App() {
 
           <form onSubmit={sendMagicLink} className="form">
             <label className="label">E-mail</label>
-            <input
-              className="input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="seuemail@emcompre.com.br"
-            />
+            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
             <button className="btnPrimary" type="submit">Enviar link</button>
             {msg && <div className="msg">{msg}</div>}
           </form>
@@ -469,8 +623,7 @@ export default function App() {
     );
   }
 
-  // Onboarding simples (mantive sem PIN aqui porque você já está com isso em outra versão.
-  // Se quiser, eu integro PIN aqui também sem mexer no layout.)
+  // ONBOARDING + PIN
   if (needsOnboarding) {
     return (
       <div className="page">
@@ -478,9 +631,7 @@ export default function App() {
           <div className="topRow">
             <div>
               <div className="brandTitle">Complete seu cadastro</div>
-              <div className="brandSubtitle">
-                Primeiro acesso. Preencha nome, setor e empresa para liberar o uso da lojinha.
-              </div>
+              <div className="brandSubtitle">Nome, setor, empresa e PIN (4 dígitos)</div>
             </div>
             <button className="btnGhost" onClick={signOut}>Sair</button>
           </div>
@@ -501,22 +652,55 @@ export default function App() {
               <option value="BF">BF Colchões</option>
             </select>
 
+            <label className="label">PIN (4 dígitos)</label>
+            <input
+              className="input"
+              inputMode="numeric"
+              maxLength={4}
+              value={pin1}
+              type={pinVisible ? "text" : "password"}
+              onChange={(e) => setPin1(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="••••"
+            />
+
+            <label className="label">Confirmar PIN</label>
+            <input
+              className="input"
+              inputMode="numeric"
+              maxLength={4}
+              value={pin2}
+              type={pinVisible ? "text" : "password"}
+              onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="••••"
+            />
+
+            <button className="btnGhost" type="button" onClick={() => setPinVisible((v) => !v)}>
+              {pinVisible ? "Ocultar PIN" : "Mostrar PIN"}
+            </button>
+
             <button
               className="btnPrimary"
               onClick={async () => {
                 setMsg("");
                 if (!fullName.trim() || !sector.trim() || !company) return setMsg("Preencha nome, setor e empresa.");
+                if (pin1.length !== 4 || pin2.length !== 4) return setMsg("PIN precisa ter 4 dígitos.");
+                if (pin1 !== pin2) return setMsg("PIN e confirmação não conferem.");
 
                 const userId = session.user.id;
 
+                // cria employee
                 const { data, error } = await supabase
                   .from("employees")
                   .insert([{ user_id: userId, name: fullName.trim(), sector: sector.trim(), company, active: true }])
                   .select("id")
                   .single();
-
                 if (error) return setMsg(error.message);
 
+                // seta pin via RPC (hash no banco)
+                const { error: ePin } = await supabase.rpc("set_my_pin", { p_pin: pin1 });
+                if (ePin) return setMsg(ePin.message);
+
+                // vincula profile
                 const { error: e2 } = await supabase.from("profiles").update({ employee_id: data.id }).eq("user_id", userId);
                 if (e2) return setMsg(e2.message);
 
@@ -535,7 +719,7 @@ export default function App() {
     );
   }
 
-  // Tela principal (sem mexer em responsividade/estilo - usa suas classes)
+  // APP NORMAL (SEM COMPRA)
   return (
     <div className="shell">
       <div className="container">
@@ -558,7 +742,6 @@ export default function App() {
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
 
         <div className="grid">
-          {/* Extrato */}
           <div className="card">
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <h3 className="cardTitle" style={{ marginRight: "auto" }}>
@@ -598,7 +781,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* ADMIN */}
           {profile?.is_admin && (
             <div className="card">
               <h3 className="cardTitle">🛠 Admin</h3>
@@ -616,6 +798,10 @@ export default function App() {
                 >
                   Lançar crédito
                 </button>
+
+                <a className="btnGhost" href="/?kiosk=1" target="_blank" rel="noreferrer">
+                  Abrir Modo Balcão
+                </a>
               </div>
 
               {showCredit && (
@@ -652,7 +838,7 @@ export default function App() {
                       .slice(0, 300)
                       .map((e) => (
                         <option key={e.user_id} value={e.user_id}>
-                          {e.name} — {e.sector} (Saldo: {brl(e.credit_balance || 0)})
+                          {e.name} — {e.sector}
                         </option>
                       ))}
                   </select>
@@ -679,14 +865,10 @@ export default function App() {
                   </button>
 
                   <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                    Esse lançamento aparece na aba <b>Créditos</b> (lançamentos do mês) do Excel.
+                    Esse lançamento aparece na aba <b>Créditos</b> do Excel.
                   </div>
                 </div>
               )}
-
-              <p style={{ opacity: 0.75, marginTop: 10 }}>
-                Exportação mensal pega somente compras/créditos do mês atual (de 1º dia até o próximo mês).
-              </p>
             </div>
           )}
         </div>
