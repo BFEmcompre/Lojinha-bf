@@ -363,6 +363,10 @@ export default function App() {
   const [pin2, setPin2] = useState("");
   const [pinVisible, setPinVisible] = useState(false);
 
+const [pinCheck, setPinCheck] = useState("");
+const [pinOk, setPinOk] = useState(false);
+
+
 
 const [showPin, setShowPin] = useState(false);
 
@@ -969,7 +973,7 @@ const [pinViewMode, setPinViewMode] = useState("hidden");
 </div>
 
 
-        {pinViewMode && (
+        {pinViewMode !== "hidden" && (
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Digite seu PIN atual para exibir</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
