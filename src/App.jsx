@@ -809,7 +809,8 @@ const [showPin, setShowPin] = useState(false);
     );
   }
 
-  // Se for modo balcão (tablet), renderiza compra aqui (somente ADM)
+
+// Se for modo balcão (tablet), renderiza compra aqui (somente ADM)
 
 if (isKiosk && !profile) {
   return (
@@ -819,11 +820,11 @@ if (isKiosk && !profile) {
       </div>
     </div>
   );
+}
 
-
-  if (isKiosk) {
-    return <KioskPurchase session={session} profile={profile} />;
-  }
+if (isKiosk) {
+  return <KioskPurchase session={session} profile={profile} />;
+}
 
   // Tela de cadastro (aparece no 1º acesso)
   if (needsOnboarding) {
@@ -987,42 +988,7 @@ if (isKiosk && !profile) {
 
 
 
-        {pinViewMode !== "hidden" && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Digite seu PIN atual para exibir</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                className="input"
-                style={{ flex: 1 }}
-                inputMode="numeric"
-                maxLength={4}
-                value={pinCheck}
-                onChange={(e) => setPinCheck(normalizePin(e.target.value))}
-                placeholder="••••"
-                type="password"
-              />
-              <button
-                className="btnPrimary"
-                type="button"
-                onClick={async () => {
-                  setMsg("");
-                  if (pinCheck.length !== 4) return setMsg("Informe 4 dígitos.");
-                  const { data, error } = await supabase.rpc("verify_pin", {
-                    p_user: session.user.id,
-                    p_pin: pinCheck,
-                  });
-                  if (error) return setMsg(error.message);
-                  if (!data) return setMsg("PIN incorreto ❌");
-                  setPinOk(true);
-                  setMsg("PIN exibido ✅");
-                }}
-              >
-                Confirmar
-              </button>
-            </div>
-          </div>
-        )}
-
+      
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
 
         <div className="grid" style={{ marginTop: 12 }}>
