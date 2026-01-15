@@ -49,10 +49,20 @@ function monthRangeISO(d = new Date()) {
 }
 
 function safeDec(v) {
-  // aceita "10,50" ou "10.50"
-  const n = Number(String(v ?? "").replace(".", "").replace(",", "."));
+  const s = String(v ?? "").trim();
+
+  // se tiver vírgula, assume formato BR: 1.234,56
+  if (s.includes(",")) {
+    const norm = s.replace(/\./g, "").replace(",", ".");
+    const n = Number(norm);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  // se não tiver vírgula, assume formato normal: 1234.56
+  const n = Number(s);
   return Number.isFinite(n) ? n : NaN;
 }
+
 
 function normalizePin(v) {
   return String(v || "").replace(/\D/g, "").slice(0, 4);
@@ -363,16 +373,8 @@ export default function App() {
   const [pin2, setPin2] = useState("");
   const [pinVisible, setPinVisible] = useState(false);
 
-const [pinCheck, setPinCheck] = useState("");
-const [pinOk, setPinOk] = useState(false);
-
-
 
 const [showPin, setShowPin] = useState(false);
-
-// PIN (tela usuário / mostrar-validar)
-const [pinViewMode, setPinViewMode] = useState("hidden"); 
-// "hidden" | "shown"
 
 
 
@@ -808,6 +810,17 @@ const [pinViewMode, setPinViewMode] = useState("hidden");
   }
 
   // Se for modo balcão (tablet), renderiza compra aqui (somente ADM)
+
+if (isKiosk && !profile) {
+  return (
+    <div className="page">
+      <div className="authCard">
+        <div className="brandTitle">Carregando...</div>
+      </div>
+    </div>
+  );
+
+
   if (isKiosk) {
     return <KioskPurchase session={session} profile={profile} />;
   }
@@ -946,7 +959,7 @@ const [pinViewMode, setPinViewMode] = useState("hidden");
 
         {/* PIN (mostrar/alterar) */}
 <div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
-  PIN: <b>{showPin ? "****" : "••••"}</b>{" "}
+  PIN: <b>{showPin ? "••••" : "••••"}</b>{" "}
   <button
     className="btnGhost"
     type="button"
@@ -971,6 +984,7 @@ const [pinViewMode, setPinViewMode] = useState("hidden");
     Alterar PIN (via e-mail)
   </button>
 </div>
+
 
 
         {pinViewMode !== "hidden" && (
