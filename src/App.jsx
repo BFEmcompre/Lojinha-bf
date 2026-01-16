@@ -375,6 +375,9 @@ export default function App() {
 
 
 const [showPin, setShowPin] = useState(false);
+const [revealedPin, setRevealedPin] = useState(null);
+const [pinLoading, setPinLoading] = useState(false);
+
 
 
 
@@ -960,14 +963,47 @@ if (isKiosk) {
 
         {/* PIN (mostrar/alterar) */}
 <div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
-  PIN: <b>{showPin ? "••••" : "••••"}</b>{" "}
+  PIN:{" "}
+  <b>
+    {showPin ? (revealedPin ?? "—") : "••••"}
+  </b>{" "}
   <button
     className="btnGhost"
     type="button"
-    onClick={() => setShowPin((v) => !v)}
+    disabled={pinLoading}
+    onClick={async () => {
+      setMsg("");
+
+      if (showPin) {
+        // ocultar
+        setShowPin(false);
+        return;
+      }
+
+      // mostrar: busca no banco
+      setPinLoading(true);
+      const { data, error } = await supabase.rpc("reveal_my_pin");
+      setPinLoading(false);
+
+      if (error) {
+        setMsg(error.message);
+        return;
+      }
+
+      if (!data) {
+        setMsg("Seu PIN ainda não pode ser exibido. Clique em “Alterar PIN (via e-mail)” e defina novamente.");
+        return;
+      }
+
+      setRevealedPin(String(data));
+      setShowPin(true);
+
+      // opcional: auto-ocultar após 15s
+      setTimeout(() => setShowPin(false), 15000);
+    }}
     style={{ marginLeft: 6 }}
   >
-    {showPin ? "Ocultar PIN" : "Mostrar PIN"}
+    {pinLoading ? "Carregando..." : showPin ? "Ocultar PIN" : "Mostrar PIN"}
   </button>{" "}
   <button
     className="btnGhost"
